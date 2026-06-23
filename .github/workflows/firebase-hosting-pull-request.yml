@@ -1,0 +1,40 @@
+# This file was auto-generated for UPhi™ B2B Marine World automated deployment pipeline.
+# It handles active preview channel builds and deployments to Firebase Hosting on pull requests.
+
+name: Deploy to Firebase Hosting on Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build_and_preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Base Dependencies
+        run: npm ci
+
+      - name: Build Application Assets
+        run: npm run build
+
+      - name: Deploy Preview to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_UPHI_MARINEWORLD }}'
+          projectId: uphi-marineworld

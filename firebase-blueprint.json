@@ -1,0 +1,455 @@
+{
+  "entities": {
+    "Company": {
+      "title": "Company",
+      "description": "Represents a single operating company tenant within the merchant system",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique auto-generated Firestore document ID"
+        },
+        "merchantId": {
+          "type": "string",
+          "description": "The UID of the owning merchant user mapping to auth.uid"
+        },
+        "name": {
+          "type": "string",
+          "description": "Primary corporate title"
+        },
+        "brandName": {
+          "type": "string",
+          "description": "Active brand trademark"
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of the corporate scope"
+        },
+        "banner": {
+          "type": "string",
+          "description": "Hero background image URL or raw DataURL state string"
+        },
+        "logo": {
+          "type": "string",
+          "description": "Header circular display trademark logo URL"
+        },
+        "city": {
+          "type": "string",
+          "description": "Primary headquarters city context"
+        },
+        "country": {
+          "type": "string",
+          "description": "Primary operating nation context (such as GLOBAL, DE, or TR)"
+        },
+        "sector": {
+          "type": "string",
+          "description": "Unified sectoral field"
+        },
+        "subdomain": {
+          "type": "string",
+          "description": "Assigned custom operating identifier"
+        },
+        "continuedText": {
+          "type": "string",
+          "description": "Custom action prompt for secondary divisions"
+        },
+        "ecosystemBanner": {
+          "type": "string",
+          "description": "Secondary operations background image asset"
+        },
+        "extraNodes": {
+          "type": "array",
+          "description": "Active extra operational entities nested structures"
+        },
+        "planTier": {
+          "type": "integer",
+          "description": "Merchant package tier defining total allowed node capacity"
+        },
+        "stripeAccountId": {
+          "type": "string",
+          "description": "Stripe Connect merchant account ID mapping"
+        },
+        "stripeStatus": {
+          "type": "string",
+          "description": "Active/Inactive verification state for payments"
+        },
+        "settlementMeta": {
+          "type": "object",
+          "description": "Platform fees and Direct Charge Stripe Connect configuration"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server modification timestamp"
+        }
+      },
+      "required": ["merchantId", "name", "city", "country", "planTier", "createdAt", "updatedAt"]
+    },
+    "Offering": {
+      "title": "Offering",
+      "description": "A commercial offering representing a product, yacht, service, charter, subscription, etc.",
+      "type": "object",
+      "properties": {
+        "offeringId": { "type": "string" },
+        "offeringType": { "type": "string", "enum": ["Product", "Equipment", "Component", "Vessel", "Charter", "Experience", "Service", "Project", "Platform", "Software", "Membership", "Program", "Certification", "Event"] },
+        "businessCategory": { "type": "string" },
+        "sectorCity": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "offeringStatus": { "type": "string", "enum": ["active", "inactive", "archived"] },
+        "commercialStatus": { "type": "string", "enum": ["available", "reserved", "sold", "contracted"] },
+        "reservationStatus": { "type": "string", "enum": ["open", "pending", "confirmed", "closed"] },
+        "visibilityStatus": { "type": "string", "enum": ["public", "private", "draft"] },
+        "pricingModel": { "type": "string", "enum": ["fixed", "usage_based", "quote_required"] },
+        "price": { "type": "number" },
+        "currency": { "type": "string" },
+        "depositAmount": { "type": "number" },
+        "minimumOrderQuantity": { "type": "number" },
+        "inventoryStatus": { "type": "string" },
+        "maxInstantPayment": { "type": "number" },
+        "requiresEscrow": { "type": "boolean" },
+        "escrowProvider": { "type": "string" },
+        "escrowStatus": { "type": "string", "enum": ["pending", "funded", "released", "cancelled"] },
+        "media": { "type": "array" },
+        "documents": { "type": "array" },
+        "schemaEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["offeringId", "offeringType", "title", "price", "currency", "offeringStatus", "commercialStatus", "createdAt", "updatedAt"]
+    },
+    "CommercialWorkflow": {
+      "title": "CommercialWorkflow",
+      "description": "Transactional pipeline tracker monitoring intent, approval, payment and settlement keys",
+      "type": "object",
+      "properties": {
+        "workflowId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "offeringId": { "type": "string" },
+        "requestId": { "type": "string" },
+        "workflowType": { "type": "string", "enum": ["purchase", "reservation", "booking", "subscription", "membership", "quotation", "contract", "deposit"] },
+        "commercialIntent": { "type": "string", "enum": ["purchase", "RFQ", "lease"] },
+        "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "paymentStatus": { "type": "string", "enum": ["pending", "authorized", "paid", "failed", "refunded"] },
+        "settlementStatus": { "type": "string", "enum": ["pending", "processing", "settled", "disputed"] },
+        "transactionStatus": { "type": "string", "enum": ["pending", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workflowId", "companyId", "offeringId", "workflowType", "approvalStatus", "paymentStatus", "createdAt", "updatedAt"]
+    },
+    "TransactionDocument": {
+      "title": "TransactionDocument",
+      "description": "Official business documents synchronized / auto-generated for transaction audit trails",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentType": { "type": "string", "enum": ["Quotation", "Commercial Offer", "Purchase Order", "Reservation Agreement", "Booking Confirmation", "Membership Certificate", "Invoice", "Receipt", "Contract", "Settlement Report"] },
+        "workflowId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["documentId", "documentType", "workflowId", "companyId", "status", "createdAt"]
+    },
+    "CompanyRequest": {
+      "title": "CompanyRequest",
+      "description": "B2B client inquiry/request to the AI twin operator",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "offeringId": { "type": "string" },
+        "offeringType": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "QUOTE_REQUESTED", "OFFER_SENT", "DEPOSIT_RECEIVED", "BOOKED", "RESERVED", "SUBSCRIPTION_ACTIVE", "CONTRACT_ACTIVE", "COMPLETED", "CANCELLED"] },
+        "depositAmount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["paid", "pending", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "customerName", "email", "status", "createdAt"]
+    },
+    "UserCommerceProfile": {
+      "title": "UserCommerceProfile",
+      "description": "Secure customer portal metrics, logs and activities inside the core platform",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "PlatformMasterTransaction": {
+      "title": "PlatformMasterTransaction",
+      "description": "Ecosystem-wide master audit double ledger records for Direct Charge financial payouts",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "requestId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "offeringId": { "type": "string" },
+        "sectorCity": { "type": "string" },
+        "businessCategory": { "type": "string" },
+        "grossAmount": { "type": "number" },
+        "platformFee": { "type": "number" },
+        "stripeFee": { "type": "number" },
+        "sellerNet": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["transactionId", "companyId", "grossAmount", "platformFee", "sellerNet", "status", "createdAt"]
+    },
+    "WorkspaceState": {
+      "title": "WorkspaceState",
+      "description": "State mapping cached UI layout for unique navigation context and active browser states",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique auto-generated document identifier corresponding to user ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the operating subscriber user"
+        },
+        "lastActiveCompanyId": {
+          "type": "string",
+          "description": "The target company tenant used during last exit"
+        },
+        "lastActiveNodeSlug": {
+          "type": "string",
+          "description": "The last used extra country operational sector node ID"
+        },
+        "customTerminology": {
+          "type": "object",
+          "description": "Overridden user taxonomy mappings"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "System synchronization timestamp"
+        }
+      },
+      "required": ["userId", "lastActiveCompanyId", "lastUpdated"]
+    },
+    "BillingState": {
+      "title": "BillingState",
+      "description": "PCI-DSS Compliant secure billing ledger completely decoupled from raw card credentials",
+      "type": "object",
+      "properties": {
+        "merchantId": { "type": "string" },
+        "planTier": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "stripeCustomerId": { "type": "string" },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "past_due", "unpaid", "canceled"] },
+        "currentPeriodEnd": { "type": "string", "format": "date-time" },
+        "apiUsageCount": { "type": "integer" },
+        "apiUsageLimit": { "type": "integer" }
+      },
+      "required": ["merchantId", "planTier", "stripeCustomerId", "subscriptionStatus", "apiUsageCount", "apiUsageLimit"]
+    },
+    "TelemetryNode": {
+      "title": "TelemetryNode",
+      "description": "Active global fleet telemetry node in the master meta vault",
+      "type": "object",
+      "properties": {
+        "nodeId": { "type": "string" },
+        "city": { "type": "string" },
+        "country": { "type": "string" },
+        "status": { "type": "string" },
+        "lastPing": { "type": "string", "format": "date-time" },
+        "activeConnections": { "type": "integer" }
+      },
+      "required": ["nodeId", "city", "country", "status", "lastPing"]
+    },
+    "CityRegistryEntry": {
+      "title": "CityRegistryEntry",
+      "description": "Registry configurations for one of the sectoral cities",
+      "type": "object",
+      "properties": {
+        "cityId": { "type": "string" },
+        "cityName": { "type": "string" },
+        "sector": { "type": "string" },
+        "isUnlocked": { "type": "boolean" },
+        "registeredCompaniesCount": { "type": "integer" }
+      },
+      "required": ["cityId", "cityName", "sector", "isUnlocked"]
+    },
+    "StripeLedgerTransaction": {
+      "title": "StripeLedgerTransaction",
+      "description": "Direct Stripe webhook listener metrics stream transaction log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "amount": { "type": "integer" },
+        "currency": { "type": "string" },
+        "customerId": { "type": "string" },
+        "status": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "amount", "currency", "status", "timestamp"]
+    },
+    "MasterAdmin": {
+      "title": "MasterAdmin",
+      "description": "Additional administrators for the master admin panel with custom role access scopes and passcodes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "passcode": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "name", "role", "passcode", "isActive", "createdAt"]
+    },
+    "EcosystemIntelligenceEvent": {
+      "title": "EcosystemIntelligenceEvent",
+      "description": "Live GA4 and Firebase Ecosystem Intelligence event logged to document platform activity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "eventName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "eventName", "timestamp"]
+    },
+    "P2PChat": {
+      "title": "P2PChat",
+      "description": "Represents a P2P messaging channel between two verified operating companies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array" },
+        "lastMessage": { "type": "string" },
+        "lastUpdatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "participants", "lastUpdatedAt"]
+    },
+    "P2PMessage": {
+      "title": "P2PMessage",
+      "description": "A single messages record in the P2P chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["id", "senderId", "receiverId", "text", "timestamp", "isRead"]
+    }
+  },
+  "firestore": {
+    "ecosystem_intelligence_events/{eventId}": {
+      "schema": "EcosystemIntelligenceEvent",
+      "description": "Ecosystem metrics and event telemetry stream"
+    },
+    "companies/{companyId}": {
+      "schema": "Company",
+      "description": "Exhaustive merchant entities collection"
+    },
+    "companies/{companyId}/offerings/{offeringId}": {
+      "schema": "Offering",
+      "description": "Interactive corporate offerings/products/services context"
+    },
+    "companies/{companyId}/commercial_workflows/{workflowId}": {
+      "schema": "CommercialWorkflow",
+      "description": "Commercial negotiation pipelines and transactions"
+    },
+    "companies/{companyId}/documents/{documentId}": {
+      "schema": "TransactionDocument",
+      "description": "Official business receipts of transactions"
+    },
+    "companies/{companyId}/requests/{requestId}": {
+      "schema": "CompanyRequest",
+      "description": "Customer purchase intent inquiries"
+    },
+    "companies/{companyId}/agent_context/memory": {
+      "schema": "object",
+      "description": "Decentralized cognitive agent workspace parameters"
+    },
+    "users/{userId}": {
+      "schema": "UserCommerceProfile",
+      "description": "Secure customer account overview profiles"
+    },
+    "users/{userId}/activities/{activityId}": {
+      "schema": "object",
+      "description": "Log of client system-level navigations"
+    },
+    "users/{userId}/transactions/{txId}": {
+      "schema": "object",
+      "description": "User purchases ledger list"
+    },
+    "users/{userId}/contracts/{contractId}": {
+      "schema": "object",
+      "description": "Standard service agreement archives"
+    },
+    "users/{userId}/reservations/{resId}": {
+      "schema": "object",
+      "description": "Yacht and marina slots booked metadata"
+    },
+    "platform_transactions/{transactionId}": {
+      "schema": "PlatformMasterTransaction",
+      "description": "Ecosystem unified double ledger stream"
+    },
+    "platform_metrics/live": {
+      "schema": "object",
+      "description": "Real-time global dashboard aggregates"
+    },
+    "platform_metrics/city_revenue/{cityId}": {
+      "schema": "object",
+      "description": "Aggregated transactional revenue index calculated by sector cities"
+    },
+    "companies/{companyId}/missions/{missionId}": {
+      "schema": "object",
+      "description": "Calculated confidence score and state for an automated mission"
+    },
+    "workspace_states/{stateId}": {
+      "schema": "WorkspaceState",
+      "description": "Persistent browser caching states for individual subscribers"
+    },
+    "billing_states/{merchantId}": {
+      "schema": "BillingState",
+      "description": "Strict encryption tier mapping billing states per legal merchant"
+    },
+    "master_meta_vault/global_telemetry/active_nodes/{nodeId}": {
+      "schema": "TelemetryNode",
+      "description": "Global Fleet Map nodes tracker"
+    },
+    "master_meta_vault/city_registry/{cityId}": {
+      "schema": "CityRegistryEntry",
+      "description": "85 Sectoral Cities map array target"
+    },
+    "stripe_ledger/{txId}": {
+      "schema": "StripeLedgerTransaction",
+      "description": "Directly tied to Stripe Connect Webhook listener metrics stream ledger"
+    },
+    "master_admins/{adminId}": {
+      "schema": "MasterAdmin",
+      "description": "System master administrators with granular passcode permissions"
+    },
+    "p2p_chats/{chatId}": {
+      "schema": "P2PChat",
+      "description": "Active P2P chatting channels between business nodes"
+    },
+    "p2p_chats/{chatId}/messages/{messageId}": {
+      "schema": "P2PMessage",
+      "description": "P2P Chat individual messages list"
+    }
+  }
+}

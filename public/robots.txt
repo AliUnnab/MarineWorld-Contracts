@@ -1,0 +1,32 @@
+# UPhi(TM) OS & UNIVABIL(TM) PROTOCOL - AI Bot Highway Configuration
+User-agent: *
+Allow: /
+
+# Explicit Access Authorization for Enterprise AI & GEO Crawlers
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+# Absolute Sitemaps Location Matrix for AI Crawlers
+Sitemap: https://marineworld.city/sitemap.xml
+Sitemap: https://marineworld.city

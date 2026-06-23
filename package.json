@@ -1,0 +1,53 @@
+{
+  "name": "umu--digione",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "github-auth": "node github-auth.js",
+    "git-sync": "bash git-sync.sh"
+  },
+  "dependencies": {
+    "@google/genai": "^1.50.1",
+    "@stripe/react-stripe-js": "^6.5.0",
+    "@stripe/stripe-js": "^9.7.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase": "^12.14.0",
+    "firebase-admin": "^14.0.0",
+    "html2canvas": "^1.4.1",
+    "i18next": "^26.0.8",
+    "jimp": "^1.6.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "lucide-react": "^0.562.0",
+    "motion": "^12.38.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^17.0.6",
+    "react-markdown": "^10.1.0",
+    "react-qr-code": "^2.2.0",
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1",
+    "stripe": "^22.2.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
+    "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.22.4",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
