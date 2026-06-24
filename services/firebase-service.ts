@@ -34,6 +34,34 @@ import { create } from "zustand";
 import appletFirebaseConfig from "../firebase-applet-config.json";
 
 /**
+ * Safe client storage utility to prevent SecurityErrors in highly sandboxed iframe previews.
+ */
+const safeStorage = {
+  fallbackStore: {} as Record<string, string>,
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return safeStorage.fallbackStore[key] || null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      safeStorage.fallbackStore[key] = value;
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      delete safeStorage.fallbackStore[key];
+    }
+  }
+};
+
+/**
  * ==========================================
  * 1. DATABASE MODELS & TYPE DEFINITIONS
  * ==========================================
@@ -656,14 +684,14 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
   // Secure Billing States (Requirement 8)
   billingInfo: null,
   isBillingLoading: false,
-  isDeedPaid: localStorage.getItem("is_deed_paid") === "true",
+  isDeedPaid: safeStorage.getItem("is_deed_paid") === "true",
   setIsDeedPaid: (isPaid: boolean) => {
-    localStorage.setItem("is_deed_paid", isPaid ? "true" : "false");
+    safeStorage.setItem("is_deed_paid", isPaid ? "true" : "false");
     set({ isDeedPaid: isPaid });
   },
-  isGoogleFused: localStorage.getItem("is_google_fused") === "true",
+  isGoogleFused: safeStorage.getItem("is_google_fused") === "true",
   setIsGoogleFused: (isFused: boolean) => {
-    localStorage.setItem("is_google_fused", isFused ? "true" : "false");
+    safeStorage.setItem("is_google_fused", isFused ? "true" : "false");
     set({ isGoogleFused: isFused });
   },
 
@@ -717,12 +745,12 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
       set({ currentCompany: targetCompany });
 
       // Synchronize in browser memory/localStorage cache
-      localStorage.setItem(
+      safeStorage.setItem(
         "current_sub_company",
         JSON.stringify(targetCompany),
       );
       if (nodeSlug) {
-        localStorage.setItem("last_active_node_slug", nodeSlug);
+        safeStorage.setItem("last_active_node_slug", nodeSlug);
       }
 
       // Generate clean visual navigation address to avoid reloading the browser tab
@@ -791,7 +819,7 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
       });
 
       if (loadedCompanies[0]) {
-        localStorage.setItem(
+        safeStorage.setItem(
           "current_sub_company",
           JSON.stringify(loadedCompanies[0]),
         );
@@ -866,7 +894,7 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
         const merged = updatedList.find((c) => c.id === companyId) || null;
         set({ currentCompany: merged });
         if (merged) {
-          localStorage.setItem("current_sub_company", JSON.stringify(merged));
+          safeStorage.setItem("current_sub_company", JSON.stringify(merged));
         }
       }
     } catch (err) {
@@ -887,12 +915,12 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
       });
 
       if (remainingList[0]) {
-        localStorage.setItem(
+        safeStorage.setItem(
           "current_sub_company",
           JSON.stringify(remainingList[0]),
         );
       } else {
-        localStorage.removeItem("current_sub_company");
+        safeStorage.removeItem("current_sub_company");
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, colPath);
@@ -937,7 +965,7 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
   // 11 Google Workspace Operations Implementations with mock routing telemetry
   readKnowledgeBase: async (fileId: string) => {
     const email =
-      localStorage.getItem("merchant_oauth_email") ||
+      safeStorage.getItem("merchant_oauth_email") ||
       get().user?.email ||
       "unnabgroup@gmail.com";
     const mockFilePath = `gdrive://${email}/knowledge_base/files/${fileId}_grounded_doc.pdf`;
@@ -1049,7 +1077,7 @@ export const useMarineWorldStore = create<MarineWorldStore>((set, get) => ({
 
   summarizeChatSpaces: async () => {
     const email =
-      localStorage.getItem("merchant_oauth_email") ||
+      safeStorage.getItem("merchant_oauth_email") ||
       get().user?.email ||
       "unnabgroup@gmail.com";
     const summary = `Unified Workspace Chat Spaces Summary for ${email}: Escalation channels are idle. Merchant team is active across 8 viewports. Grounded resources are aligned correctly with perfect telemetry metrics.`;
@@ -1745,8 +1773,8 @@ export const triggerAppleAuth = async (): Promise<User> => {
 export const terminateSession = async (): Promise<void> => {
   try {
     await signOut(auth);
-    localStorage.removeItem("current_sub_company");
-    localStorage.removeItem("last_active_node_slug");
+    safeStorage.removeItem("current_sub_company");
+    safeStorage.removeItem("last_active_node_slug");
   } catch (err) {
     console.error("Sign-out failure:", err);
     throw err;
@@ -1765,11 +1793,11 @@ export const triggerStrategicLeaderOTP = async (
     handleCodeInApp: true,
   };
 
-  window.localStorage.setItem("emailForSignIn", email);
-  window.localStorage.setItem("activation_passKey", passKey);
-  window.localStorage.setItem("activation_associationName", associationName);
-  window.localStorage.setItem("activation_city", city);
-  window.localStorage.setItem("activation_country", country);
+  safeStorage.setItem("emailForSignIn", email);
+  safeStorage.setItem("activation_passKey", passKey);
+  safeStorage.setItem("activation_associationName", associationName);
+  safeStorage.setItem("activation_city", city);
+  safeStorage.setItem("activation_country", country);
 
   try {
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);

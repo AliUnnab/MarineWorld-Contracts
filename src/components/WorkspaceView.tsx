@@ -1,0 +1,355 @@
+import React, { useState, useEffect } from 'react';
+import { db } from '../../services/firebase-service';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  updateDoc 
+} from 'firebase/firestore';
+import { 
+  Users, UserPlus, ShieldAlert, Check, X, Loader2, 
+  Trash2, Mail, Briefcase, RefreshCw, Star 
+} from 'lucide-react';
+import { WorkspaceMember } from '../types/saas';
+
+interface WorkspaceViewProps {
+  userId: string;
+  userEmail: string;
+}
+
+export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps) {
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Invite state
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'Owner' | 'Legal Counsel' | 'Reviewer' | 'Finance' | 'Executive' | 'External Counsel'>('Reviewer');
+  const [submittingInvite, setSubmittingInvite] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    // Listen to workspace teammates
+    const qMembers = query(collection(db, 'workspace_members'), where('userId', '==', userId));
+    const unsubscribe = onSnapshot(qMembers, (snap) => {
+      const records: WorkspaceMember[] = [];
+      snap.forEach((docSnap) => {
+        records.push({ id: docSnap.id, ...docSnap.data() } as WorkspaceMember);
+      });
+      setMembers(records);
+      setLoading(false);
+    }, (err) => {
+      console.error("Firestore workspace member listen failed:", err);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  const handleInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteName || !inviteEmail) return;
+    setSubmittingInvite(true);
+    try {
+      // Add member to Firestore
+      const membersRef = collection(db, 'workspace_members');
+      await addDoc(membersRef, {
+        userId: userId,
+        name: inviteName,
+        email: inviteEmail,
+        role: inviteRole,
+        status: "pending",
+        invitedAt: new Date().toISOString()
+      });
+
+      // Log to audit log
+      const logRef = collection(db, 'audit_logs');
+      await addDoc(logRef, {
+        userId: userId,
+        actorName: "System Identity Gate",
+        actorEmail: userEmail,
+        action: `Workspace Teammate Invitation Sent to ${inviteEmail} as ${inviteRole}`,
+        targetDocument: "Workspace Directory Security",
+        ipAddress: "128.91.44.11",
+        timestamp: new Date().toISOString()
+      });
+
+      // Reset and close
+      setInviteName('');
+      setInviteEmail('');
+      setInviteRole('Reviewer');
+      setShowInviteModal(false);
+      console.log(`Invitation dispatched successfully to ${inviteEmail}!`);
+    } catch (err) {
+      console.error("Failed to insert workspace teammate:", err);
+    } finally {
+      setSubmittingInvite(false);
+    }
+  };
+
+  const handleDeleteMember = async (memberId: string, email: string) => {
+    if (email === userEmail) {
+      console.log("You cannot remove your own administrative Owner account from the workspace environment.");
+      return;
+    }
+    
+    try {
+      await deleteDoc(doc(db, 'workspace_members', memberId));
+      
+      // Log to audit log
+      const logRef = collection(db, 'audit_logs');
+      await addDoc(logRef, {
+        userId: userId,
+        actorName: "System Identity Gate",
+        actorEmail: userEmail,
+        action: `Revoked Workspace access keys for teammate ${email}`,
+        targetDocument: "Workspace Directory Security",
+        ipAddress: "128.91.44.11",
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Audit deletion teammate error:", err);
+    }
+  };
+
+  const handleRoleUpdate = async (memberId: string, email: string, newRole: any) => {
+    if (email === userEmail) {
+      console.log("You cannot change your own workspace executive Owner role.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'workspace_members', memberId), {
+        role: newRole
+      });
+    } catch (err) {
+      console.error("Teammate role update failed:", err);
+    }
+  };
+
+  return (
+    <div className="flex-1 bg-[#171B26] overflow-y-auto px-6 py-8 text-[#E8EAED] text-left">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#2B3347] pb-6 mb-8">
+        <div>
+          <span className="text-[10px] uppercase tracking-widest text-[#00D4FF] font-bold font-mono">WORKSPACE ACCESS PERMISSIONS</span>
+          <h2 className="text-2xl font-manrope font-semibold tracking-tight text-white mt-1 uppercase">Team & Workspace</h2>
+          <p className="text-[#BBC0C4] text-[11px] font-mono tracking-tight">Configure granular role-based access limits (RBAC) across counsels, reviewers, and procurement officers.</p>
+        </div>
+        <button 
+          onClick={() => setShowInviteModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-[10px] uppercase font-bold transition-all shadow-sm tracking-wider"
+        >
+          <UserPlus size={14} /> Invite Teammate
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-20 text-center">
+          <Loader2 className="animate-spin text-[#00D4FF] mx-auto mb-4" size={32} />
+          <p className="text-xs font-mono text-[#80868B] uppercase tracking-widest">Querying workspace collaboration list...</p>
+        </div>
+      ) : (
+        <div className="bg-[#202636] rounded border border-[#2B3347] overflow-hidden">
+          <table className="w-full text-xs text-[#E8EAED]">
+            <thead>
+              <tr className="bg-[#171B26] border-b border-[#2B3347] font-mono text-[#80868B] uppercase text-[10px] tracking-wider">
+                <th className="py-3.5 px-6 text-left font-bold">User Identity Name</th>
+                <th className="py-3.5 px-6 text-left font-bold">Teammate Email</th>
+                <th className="py-3.5 px-6 text-left font-bold">Operational Role Limits</th>
+                <th className="py-3.5 px-6 text-left font-bold">Status</th>
+                <th className="py-3.5 px-6 text-left font-bold">Access Checklists</th>
+                <th className="py-3.5 px-6 text-right pr-6 font-bold">Revocation</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#2B3347]">
+              {members.length > 0 ? (
+                members.map((member) => (
+                  <tr key={member.id} className="hover:bg-[#2B3347] transition-colors">
+                    {/* User profile */}
+                    <td className="py-4 px-6 font-semibold text-white flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded bg-[#171B26] border border-[#2B3347] flex items-center justify-center font-bold text-xs text-[#00D4FF] uppercase font-mono">
+                        {member.name ? member.name[0].toUpperCase() : "U"}
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-tight">{member.name}</p>
+                        <span className="text-[9px] text-[#80868B] font-mono uppercase">Colleague ID</span>
+                      </div>
+                    </td>
+
+                    {/* Email */}
+                    <td className="py-4 px-6 text-[#BBC0C4] font-mono select-all text-[11px]">
+                      {member.email}
+                    </td>
+
+                    {/* Operational Limits / Roles */}
+                    <td className="py-4 px-6" onClick={(e) => e.stopPropagation()}>
+                      {member.email === userEmail ? (
+                        <span className="px-2 py-1 bg-[#171B26] border border-[#2B3347] rounded font-mono text-[9px] text-[#00D4FF] flex items-center gap-1.5 w-fit uppercase font-bold tracking-widest">
+                          <Star size={11} className="text-[#FDD663]" /> {member.role}
+                        </span>
+                      ) : (
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleRoleUpdate(member.id, member.email, e.target.value)}
+                          className="bg-[#171B26] border border-[#2B3347] px-2 py-1 rounded text-[10px] text-white font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#00D4FF] uppercase"
+                        >
+                          <option value="Owner">Owner</option>
+                          <option value="Legal Counsel">Legal Counsel</option>
+                          <option value="Reviewer">Reviewer</option>
+                          <option value="Finance">Finance</option>
+                          <option value="Executive">Executive</option>
+                          <option value="External Counsel">External Counsel</option>
+                        </select>
+                      )}
+                    </td>
+
+                    {/* Status badge */}
+                    <td className="py-4 px-6">
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${
+                        member.status === 'active' 
+                          ? 'bg-[#00D68F]/10 text-[#00D68F] border-[#00D68F]/20' 
+                          : 'bg-[#FDD663]/10 text-[#FDD663] border-[#FDD663]/20'
+                      }`}>
+                        {member.status}
+                      </span>
+                    </td>
+
+                    {/* Standard Role Permissions */}
+                    <td className="py-4 px-6 text-[10px] text-[#80868B] max-w-[190px] truncate font-mono uppercase tracking-tighter">
+                      {member.role === 'Owner' || member.role === 'Executive' ? (
+                        <span className="text-[#00D68F] font-bold">Total Write & Sign access</span>
+                      ) : member.role === 'Legal Counsel' || member.role === 'External Counsel' ? (
+                        "Edit clauses, lock, generate summaries"
+                      ) : member.role === 'Finance' ? (
+                        "Edit values, export pdf envelopes, billing access"
+                      ) : (
+                        "Suggest revisions only"
+                      )}
+                    </td>
+
+                    {/* Revocation trigger */}
+                    <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                      {member.email !== userEmail && (
+                        <button
+                          onClick={() => handleDeleteMember(member.id, member.email)}
+                          className="p-1 px-2.5 rounded border border-[#F28B82]/20 text-[#F28B82] hover:bg-[#F28B82]/10 transition-colors uppercase font-bold text-[9px] tracking-wider"
+                          title="Revoke session tokens"
+                        >
+                          Revoke Access
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#80868B] uppercase font-mono tracking-widest">
+                    No colleagues mapped under this tenant id.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Invite teammate Modal Drawer */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#040B18]/80 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md bg-[#202636] border border-[#2B3347] rounded p-6 text-left shadow-2xl relative">
+            <button 
+              onClick={() => setShowInviteModal(false)}
+              className="absolute top-4 right-4 text-[#80868B] hover:text-white transition-colors"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-[#2B3347] pb-4 mb-6">
+              <div className="w-10 h-10 rounded bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20 flex items-center justify-center">
+                <Users size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white uppercase tracking-tight">Invite Corporate Teammate</h3>
+                <p className="text-[10px] text-[#80868B] font-mono uppercase">Register billing seats under your workspace ID</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleInviteSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[9px] text-[#80868B] uppercase font-bold font-mono">Colleague Full Name</label>
+                <div className="mt-1 relative rounded shadow-sm">
+                  <input
+                    type="text"
+                    required
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                    placeholder="e.g. Jean-Pierre Laurent"
+                    className="block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white uppercase font-mono focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] text-[#80868B] uppercase font-bold font-mono">Business Email Address</label>
+                <div className="mt-1 relative rounded shadow-sm">
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="teammate@company-group.org"
+                    className="block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] text-[#80868B] uppercase font-bold font-mono">Operational Seat Authorization</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e: any) => setInviteRole(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#00D4FF] uppercase"
+                >
+                  <option value="Owner">Owner (Full administrative edit)</option>
+                  <option value="Legal Counsel">Legal Counsel (Edit clauses only)</option>
+                  <option value="Reviewer">Reviewer (Suggest revisions only)</option>
+                  <option value="Finance">Finance (Billing & Values)</option>
+                  <option value="Executive">Executive (Full access)</option>
+                  <option value="External Counsel">External Counsel (Specialized edit)</option>
+                </select>
+              </div>
+
+              <div className="bg-[#171B26] p-3.5 rounded border border-[#2B3347] text-[10px] text-[#BBC0C4] flex gap-2 font-mono uppercase tracking-tight">
+                <ShieldAlert size={16} className="text-[#FDD663] shrink-0" />
+                <span>Inviting will automatically allocate and assign a legal seat matching local billing agreements.</span>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 bg-[#2B3347] hover:bg-[#323D52] text-[10px] text-[#80868B] rounded transition-all font-bold uppercase tracking-wider"
+                >
+                  Close Drawer
+                </button>
+                <button
+                  disabled={submittingInvite}
+                  type="submit"
+                  className="px-4 py-2 bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-[10px] font-bold rounded transition-all uppercase flex items-center justify-center gap-1 tracking-wider"
+                >
+                  {submittingInvite && <Loader2 size={12} className="animate-spin" />} Dispatch invitation
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,6 @@
+{
+  "name": "MarineWorld Contract Studio",
+  "description": "MarineWorld Contract Studio is a Maritime Contract Operating System for enterprise-grade maritime commercial transactions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

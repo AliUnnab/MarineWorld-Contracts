@@ -1,13 +1,4 @@
 
-// Polyfill to solve the Turkish 'I'/'İ' capitalization issues globally across the system
-String.prototype.toUpperCase = function (this: string) {
-  return this.toLocaleUpperCase("en-US");
-};
-
-String.prototype.toLowerCase = function (this: string) {
-  return this.toLocaleLowerCase("en-US");
-};
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

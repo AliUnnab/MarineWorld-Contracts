@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, CheckCircle2, ChevronRight, FileText, User, Anchor, 
   History, PenTool, Scale, Eye, Download, Search, AlertCircle, Cpu, Shield, UploadCloud, X, ArrowRight, ShieldAlert, Mail, FileSignature, ShieldCheck,
-  Menu, ChevronLeft, Send, Trash2, Plus, Loader2, CreditCard
+  Menu, ChevronLeft, Send, Trash2, Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Calendar
 } from 'lucide-react';
 import { chatWithContractAdvisor, rewriteContractClauseWithAi } from '../services/gemini';
 import { db } from '../services/firebase-service';
@@ -349,12 +349,18 @@ export default function ContractStudio({ template, company, userType, onBack }: 
   };
 
   const generateInitialClauses = (data: typeof wizardData) => {
-    const formattedVal = `${data.currency} ${Number(data.contractValue.replace(/,/g, '')).toLocaleString()}`;
+    const formattedVal = `${data.currency} ${Number(data.contractValue?.toString().replace(/,/g, '') || 0).toLocaleString()}`;
     return [
       {
         id: "clause_parties",
         title: "Clause 1. Parties & Commercial Preamble",
-        content: `This Agreement is officially made and entered into on this 14th day of June 2026, by and between:\n\n1. SELLER / PROVIDER: ${data.seller}, a premier marine corporation operating under designated corporate ordinances, acting as the vessel transferrer / technical contractor.\n\n2. BUYER / CLIENT: ${data.buyer}, an international purchasing group / commercial charter operator, acting as the primary receiver.\n\nHereinafter referred to collectively as the "Parties" and individually as a "Party". This transaction represents the absolute commercial intent to transfer and operate maritime assets.`,
+        content: `This Agreement is officially made and entered into on this 14th day of June 2026, by and between:
+
+1. SELLER / PROVIDER: ${data.seller}, a premier marine corporation operating under designated corporate ordinances, acting as the vessel transferrer / technical contractor.
+
+2. BUYER / CLIENT: ${data.buyer}, an international purchasing group / commercial charter operator, acting as the primary receiver.
+
+Hereinafter referred to collectively as the "Parties" and individually as a "Party". This transaction represents the absolute commercial intent to transfer and operate maritime assets.`,
         status: 'v1 Generated' as const,
         alternativeReplacementsCount: 0
       },
@@ -460,7 +466,9 @@ export default function ContractStudio({ template, company, userType, onBack }: 
   // Centralized Contract Fields for filled values
   const [contractFields, setContractFields] = useState<any>({
     deliverables: "Provision of marine engineering, dry docking oversight, and technical operational diagnostics for the designated container fleet. Includes technical consultant site audits at all operating service locations.",
-    milestones: "Milestone 1: Preliminary Site Inspection (End of Month 1)\nMilestone 2: Critical Asset Diagnostic (Month 3)\nMilestone 3: Fleet Maintenance Deployment (Ongoing)",
+    milestones: `Milestone 1: Preliminary Site Inspection (End of Month 1)
+Milestone 2: Critical Asset Diagnostic (Month 3)
+Milestone 3: Fleet Maintenance Deployment (Ongoing)`,
     commercialTerms: "Base service pricing is calculated on a modular structure with optional operational hours priced according to standard Annex rates. Direct procurement materials are billed separately with a 5% handling surcharge.",
     surcharges: "Demurrage claims and vessel waiting time caps are subject to a maximum threshold of $15,000 per 24-hour cycle.",
     paymentTerms: "Payment is payable monthly in advance on receipt of corresponding company service invoice. Invoices must list the detailed breakdown of technical resources deployed in the field.",
@@ -474,9 +482,12 @@ export default function ContractStudio({ template, company, userType, onBack }: 
     confidentialityDuration: "60 Months standard non-disclosure scope from agreement expiration",
     terminationNotice: "90 Days written notice for convenience by either party.",
     arbitrationRules: "LMAA Terms 2021 & standard Arbitrators Rules",
-    annexes: "Annex A: Vessel Fleet Allocation Matrix\nAnnex B: Hourly Fee Rates and Overtime Standards",
+    annexes: `Annex A: Vessel Fleet Allocation Matrix
+Annex B: Hourly Fee Rates and Overtime Standards`,
     verificationCode: "8A7F-31CC-0E2A-5501-7F03",
-    auditTrail: "1. Record Initialized: 2026-06-14 10:14 UTC\n2. AI Risk Screened: Verified\n3. Compliance Certificate attached"
+    auditTrail: `1. Record Initialized: 2026-06-14 10:14 UTC
+2. AI Risk Screened: Verified
+3. Compliance Certificate attached`
   });
 
   const [aiState, setAiState] = useState<{task: string | null, status: 'idle' | 'loading' | 'complete', result?: string}>({ task: null, status: 'idle' });
@@ -681,7 +692,8 @@ export default function ContractStudio({ template, company, userType, onBack }: 
       setTimeout(() => setPurchaseSuccessMessage(null), 5000);
     } catch (err) {
       console.error("Error purchasing credits:", err);
-      alert("Credits purchase failed: " + (err instanceof Error ? err.message : String(err)));
+      console.error("Credits purchase failed:", err);
+      // alert("Credits purchase failed: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -942,7 +954,8 @@ export default function ContractStudio({ template, company, userType, onBack }: 
 
   const handleExecute = async () => {
     if (!isPaymentMethodValid) {
-      alert("Hata: Firmanın ödeme yöntemi geçerli değil veya yetkilendirilmemiş! Lütfen fatura alanından kartınızı güncelleyin.");
+      console.error("Hata: Firmanın ödeme yöntemi geçerli değil veya yetkilendirilmemiş!");
+      // alert("Hata: Firmanın ödeme yöntemi geçerli değil veya yetkilendirilmemiş! Lütfen fatura alanından kartınızı güncelleyin.");
       return;
     }
 
@@ -1027,7 +1040,8 @@ export default function ContractStudio({ template, company, userType, onBack }: 
       }, 1500);
     } catch (err) {
       console.error("Error executing contract with credits:", err);
-      alert("Deduction failed: " + (err instanceof Error ? err.message : String(err)));
+      console.error("Deduction failed:", err);
+      // alert("Deduction failed: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -1340,7 +1354,8 @@ ${contractFields.auditTrail}
       pdf.save(`DIGITAL_CONTRACT_${foundation.title.replace(/\s+/g, "_") || "DOCUMENT"}.pdf`);
     } catch (err) {
       console.error("PDF generator failure:", err);
-      alert("A system sandbox error occurred during PDF compiling. Falling back to secure raw copy download.");
+      console.warn("PDF compilation sandbox error. Falling back to secure download.");
+      // alert("A system sandbox error occurred during PDF compiling. Falling back to secure raw copy download.");
       const textFallback = `FALLBACK SECURE CODE CONSOLE COPY`;
       const fallbackBlob = new Blob([textFallback], { type: 'text/plain;charset=utf-8' });
       const fallbackUrl = URL.createObjectURL(fallbackBlob);
@@ -1391,567 +1406,249 @@ ${contractFields.auditTrail}
     }
   };
 
-  const inputClass = "w-full h-10 bg-[#0a1c34]/20 border border-white/10 rounded-lg p-3 text-[13px] text-white placeholder-slate-500 focus:border-[#19A7C1] focus:ring-1 focus:ring-[#19A7C1] outline-none transition-all";
-  const selectClass = "w-full h-10 bg-[#0a1c34]/20 border border-white/10 rounded-lg p-2 text-[13px] text-white focus:border-[#19A7C1] focus:ring-1 focus:ring-[#19A7C1] outline-none transition-all appearance-none";
-  const labelClass = "text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5";
-  const sectionTitleClass = "text-[16px] font-bold text-white uppercase tracking-wide mb-6 border-b border-white/10 pb-3";
+  const inputClass = "w-full h-10 bg-[#2D354B] border border-white/10 rounded-lg p-3 text-[13px] text-white placeholder-slate-400 focus:border-[#00D4FF]/50 focus:ring-1 focus:ring-[#00D4FF]/50 outline-none transition-all shadow-inner font-inter";
+  const selectClass = "w-full h-10 bg-[#242B3B] border border-white/5 rounded-lg p-2 text-[13px] text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/50 outline-none transition-all appearance-none font-inter";
+  const labelClass = "text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5 font-manrope";
+  const sectionTitleClass = "text-[16px] font-bold text-white uppercase tracking-wide mb-6 border-b border-white/5 pb-3 font-manrope";
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
   if (workflowStep === 'hub') {
+    const defaultData = [
+      {
+        id: 'REP-0992',
+        title: foundation.title,
+        type: foundation.type,
+        partyA: partyA.name,
+        partyB: partyB.name,
+        date: new Date().toISOString().split('T')[0],
+        status: isExecuted ? 'executed' : 'draft',
+        value: foundation.value
+      },
+      {
+        id: 'REP-0824',
+        title: 'Bespoke Crew Procurement',
+        type: 'Charter Agreement',
+        partyA: 'CREWMASTER',
+        partyB: 'ALPHA MARINE',
+        date: '2026-06-15',
+        status: 'executed',
+        value: '1,200,000'
+      },
+      {
+        id: 'REP-0751',
+        title: 'Vessel Dry Docking Maintenance',
+        type: 'Service Agreement',
+        partyA: 'OCEANIC ENGINEERING',
+        partyB: 'PACIFIC FLEET',
+        date: '2026-06-10',
+        status: 'draft',
+        value: '850,000'
+      }
+    ];
+
+    let sortedData = [...defaultData];
+    if (sortConfig !== null) {
+      sortedData.sort((a, b) => {
+        let valA = a[sortConfig.key as keyof typeof a];
+        let valB = b[sortConfig.key as keyof typeof a];
+        if (valA < valB) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (valA > valB) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    const requestSort = (key: string) => {
+      let direction: 'asc' | 'desc' = 'asc';
+      if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+        direction = 'desc';
+      }
+      setSortConfig({ key, direction });
+    };
+
+    const toggleRow = (id: string) => {
+      const newExpanded = new Set(expandedRows);
+      if (newExpanded.has(id)) {
+        newExpanded.delete(id);
+      } else {
+        newExpanded.add(id);
+      }
+      setExpandedRows(newExpanded);
+    };
+
     return (
-      <div className="flex flex-col h-screen w-full bg-[#041326] text-slate-200 font-manrope overflow-auto p-8 custom-scrollbar">
-        {/* Hub Header */}
-        <div className="flex items-center justify-between bg-[#040e1b]/70 backdrop-blur-md border-b border-white/10 pb-5 px-6 mb-8 mx-[-2rem] mt-[-2rem]">
-          <div className="flex items-center gap-4">
+      <div className="flex flex-col h-full w-full bg-[#040B18] text-[#E8EAED] p-8 overflow-auto custom-scrollbar">
+        <div className="max-w-7xl mx-auto w-full space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-2">
+            <div>
+              <h2 className="text-h2 tracking-tight">Contract Repository</h2>
+              <p className="text-body text-[#BBC0C4] mt-1">Manage and execute your maritime legal agreements.</p>
+            </div>
             <button 
-              onClick={onBack} 
-              className="p-2 border border-white/10 bg-transparent rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-all flex items-center gap-2 text-xs tracking-wider font-semibold uppercase shadow-sm">
-              <ArrowLeft size={14} /> Exit Suite
+              onClick={() => {
+                setIsGenerating(false);
+                setIsExecuted(false);
+                setCurrentVersion('v1 Generated');
+                setWorkflowStep('editor');
+              }}
+              className="bg-[#00D4FF] hover:bg-[#33DDFF] text-[#040B18] flex items-center justify-center gap-2 px-6 py-2.5 rounded shadow-sm transition-all cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} /> <span className="text-[13px] font-semibold uppercase tracking-wider">New Contract</span>
             </button>
-            <div className="h-8 w-[1px] bg-white/5"></div>
-            <div>
-              <h1 className="text-xs font-black text-white tracking-widest uppercase font-manrope">
-                CONTRACT STUDIO V4 — PREMIUM LEGAL OPERATING SYSTEM
-              </h1>
-              <div className="text-[9px] text-[#19A7C1] font-manrope uppercase tracking-[0.2em] mt-1">
-                Enterprise ledger registries & Cryptographic Signing
-              </div>
-            </div>
           </div>
-          <div className="bg-[#19A7C1]/5 border border-[#19A7C1]/15 px-4 py-2 rounded-lg flex items-center gap-3">
-            <Shield size={16} className="text-[#19A7C1]" />
-            <div className="text-left">
-              <div className="text-[9px] font-bold text-[#111827] uppercase tracking-wider leading-none">Security Protocol</div>
-              <div className="text-[8px] text-[#6B7280] uppercase tracking-widest mt-1">AES-256 Crypto Verified | Ledger Synced</div>
+
+          <div className="bg-[#141924] border border-white/5 p-4 rounded-md flex flex-col sm:flex-row gap-4 mb-4 shadow-sm">
+            <div className="relative flex-1">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#80868B]" />
+              <input 
+                type="text" 
+                placeholder="Search by ID, Parties, or Contract Type..." 
+                className="w-full h-10 bg-[#040B18] border border-white/5 rounded px-10 text-[13px] text-[#E8EAED] placeholder:text-[#80868B] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all"
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Dynamic Credit Purchase Success Notice */}
-        {purchaseSuccessMessage && (
-          <div className="mb-6 p-4 bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] rounded-xl text-xs font-semibold flex items-center gap-3 shadow-md animate-pulse">
-            <CheckCircle2 size={16} className="text-[#10B981]" />
-            {purchaseSuccessMessage}
-          </div>
-        )}
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "Total Handled Documents", val: "4 Agreements", desc: "Digital legal registry" },
-            { label: "Active Live Drafts", val: "1 In Compilation", desc: "Synchronized preview active" },
-            { label: "Executed & Signed", val: "2 On-Ledger", desc: "Cryptographically certified" },
-            { label: "Company Credit Balance", val: `${creditsBalance} Credits`, desc: "Deployment units", isCreditStat: true }
-          ].map((stat, i) => (
-            <div key={i} className="bg-[#041326]/40 border border-white/10 p-4 rounded-xl flex flex-col justify-between shadow-sm hover:border-[#19A7C1]/25 transition-all">
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</span>
-              <span className="text-lg font-bold text-white tracking-tight mt-2">{stat.val}</span>
-              {stat.isCreditStat ? (
-                <button 
-                  onClick={() => {
-                    const el = document.getElementById("billing-panel");
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }} 
-                  className="text-[8px] text-[#19A7C1] font-bold hover:underline uppercase tracking-wider mt-1 text-left">
-                  Buy Credit Pack ➜
-                </button>
-              ) : (
-                <span className="text-[8px] text-[#19A7C1] uppercase tracking-wider mt-1">{stat.desc}</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Step 1 Generation Loading Screen Overlay */}
-        {isGenerating && (
-          <div className="fixed inset-0 bg-[#0a1c34]/20/95 z-50 flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
-            <div className="max-w-md space-y-6">
-              <div className="relative w-20 h-20 mx-auto">
-                <div className="absolute inset-0 rounded-full border-4 border-[#19A7C1]/20 animate-pulse"></div>
-                <div className="absolute inset-0 rounded-full border-4 border-t-[#19A7C1] animate-spin"></div>
-                <Cpu size={32} className="text-[#19A7C1] absolute inset-0 m-auto animate-bounce" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-sm font-manrope font-bold text-slate-300 tracking-widest uppercase">MARITIME AI CONTRACT ENGINE</h2>
-                <p className="text-xs text-slate-400 font-manrope">Compiling legal definitions, LMAA seats & structural clauses...</p>
-              </div>
-              <div className="bg-[#041326]/40 border border-white/10 rounded-lg p-4 font-manrope text-[10px] text-emerald-400 text-left space-y-2">
-                <div>[STATUS: INIT] Deducting 5 credits... OK</div>
-                <div>[STATUS: CONNECT] Sourced model: Gemini Pro Legal... OK</div>
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                  <span className="uppercase text-[9px] font-bold">Active task:</span> {
-                    generationStage === 0 ? "Mapping Commercial Foundation & Parties..." :
-                    generationStage === 1 ? "Injecting Maritime Clauses & Warranties..." :
-                    generationStage === 2 ? "Calibrating LMAA Arbitration & Logistics..." :
-                    "Generating cryptographic ledger verifications..."
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Two main blocks: Creation Templates (Now Wizard) & Ledger */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Creation Section (1/3 width) - Now Enterprise Agreement Wizard (Step 1) */}
-          <div className="lg:col-span-1 space-y-6">
-            <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-2.5 flex items-center gap-2">
-              <PenTool size={14} className="text-[#19A7C1]" /> Step 1: Enterprise Agreement Wizard
-            </h2>
-            <div className="bg-[#041326]/40 border border-white/10 p-5 rounded-xl shadow-sm space-y-4">
-              <div>
-                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Agreement Type</label>
-                <select 
-                  className={selectClass} 
-                  value={wizardData.agreementType} 
-                  onChange={e => setWizardData({...wizardData, agreementType: e.target.value})}
-                >
-                  <option value="Vessel Sale Agreement">Vessel Sale Agreement</option>
-                  <option value="Yacht Charter Agreement">Yacht Charter Agreement</option>
-                  <option value="Refit Agreement">Refit Agreement</option>
-                  <option value="Shipbuilding Agreement">Shipbuilding Agreement</option>
-                  <option value="Crew Placement Agreement">Crew Placement Agreement</option>
-                  <option value="Marina Berthing Agreement">Marina Berthing Agreement</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Seller / Service Provider</label>
-                <input 
-                  type="text" 
-                  className={inputClass} 
-                  value={wizardData.seller} 
-                  onChange={e => setWizardData({...wizardData, seller: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Buyer / Client</label>
-                <input 
-                  type="text" 
-                  className={inputClass} 
-                  placeholder="e.g. ABC Holdings"
-                  value={wizardData.buyer} 
-                  onChange={e => setWizardData({...wizardData, buyer: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Contract Value</label>
-                  <input 
-                    type="text" 
-                    className={inputClass} 
-                    value={wizardData.contractValue} 
-                    onChange={e => setWizardData({...wizardData, contractValue: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Currency</label>
-                  <select 
-                    className={selectClass} 
-                    value={wizardData.currency} 
-                    onChange={e => setWizardData({...wizardData, currency: e.target.value})}
-                  >
-                    <option value="EUR">EUR (€)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="GBP">GBP (£)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wider block mb-1">Jurisdiction</label>
-                  <select 
-                    className={selectClass} 
-                    value={wizardData.jurisdiction} 
-                    onChange={e => setWizardData({...wizardData, jurisdiction: e.target.value})}
-                  >
-                    <option value="English Law">English Law</option>
-                    <option value="Monaco Law">Monaco Law</option>
-                    <option value="Swiss Law">Swiss Law</option>
-                    <option value="Singapore Law">Singapore Law</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wider block mb-1">Arbitration Seat</label>
-                  <select 
-                    className={selectClass} 
-                    value={wizardData.arbitrationSeat} 
-                    onChange={e => setWizardData({...wizardData, arbitrationSeat: e.target.value})}
-                  >
-                    <option value="London">London</option>
-                    <option value="Monaco">Monaco</option>
-                    <option value="Geneva">Geneva</option>
-                    <option value="Singapore">Singapore</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Delivery Port</label>
-                <input 
-                  type="text" 
-                  className={inputClass} 
-                  value={wizardData.deliveryPort} 
-                  onChange={e => setWizardData({...wizardData, deliveryPort: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Transaction Broker</label>
-                <input 
-                  type="text" 
-                  className={inputClass} 
-                  value={wizardData.broker} 
-                  onChange={e => setWizardData({...wizardData, broker: e.target.value})}
-                />
-              </div>
-
-              <button 
-                onClick={async () => {
-                  if (!wizardData.buyer.trim()) {
-                    alert("Please specify a Buyer / Client entity.");
-                    return;
-                  }
-                  
-                  // Instantly deduct credits
-                  const cost = 5;
-                  if (creditsBalance < cost) {
-                    setShowBillingWallModal(true);
-                    return;
-                  }
-
-                  setCreditsBalance(prev => Math.max(0, prev - cost));
-                  setIsGenerating(true);
-                  setGenerationStage(0);
-
-                  const stages = [
-                    "Mapping Commercial Foundation & Parties...",
-                    "Injecting Maritime Clauses & Warranties...",
-                    "Calibrating LMAA Arbitration & Logistics...",
-                    "Generating cryptographic ledger verifications..."
-                  ];
-
-                  for (let index = 0; index < stages.length; index++) {
-                    await new Promise(resolve => setTimeout(resolve, 600));
-                    setGenerationStage(index);
-                  }
-
-                  const initialGeneratedClauses = generateInitialClauses(wizardData);
-                  setClauses(initialGeneratedClauses);
-                  
-                  setFoundation({
-                    ...foundation,
-                    type: wizardData.agreementType,
-                    title: `${wizardData.agreementType} - ${wizardData.seller} vs ${wizardData.buyer}`,
-                    value: wizardData.contractValue,
-                    currency: wizardData.currency,
-                    description: `This maritime framework is established under ${wizardData.jurisdiction} for the delivery of specific operations at ${wizardData.deliveryPort}.`
-                  });
-                  setPartyA({ ...partyA, name: wizardData.seller, role: "Seller / Provider" });
-                  setPartyB({ ...partyB, name: wizardData.buyer, role: "Buyer / Client" });
-                  setJurisdiction({ law: wizardData.jurisdiction, seat: wizardData.arbitrationSeat, institution: "LMAA" });
-                  setContractFields({
-                    ...contractFields,
-                    deliverables: `Operational handover of subject vessel in accordance with DNV structural ratings.`,
-                    commercialTerms: `The absolute base sum is fixed at ${wizardData.currency} ${wizardData.contractValue}.`,
-                    paymentTerms: `Settlement payout release conditioned on sea trial acceptance metrics.`,
-                    deliveryLocation: wizardData.deliveryPort,
-                    arbitrationRules: `Resolved under standard LMAA rules in ${wizardData.arbitrationSeat}.`
-                  });
-
-                  setIsGenerating(false);
-                  setIsExecuted(false);
-                  setCurrentVersion('v1 Generated');
-                  setWorkflowStep('editor');
-                }}
-                className="w-full mt-2 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] py-3 rounded-lg text-xs tracking-wider font-bold uppercase transition-all shadow flex items-center justify-center gap-2"
-              >
-                <Cpu size={14} className="animate-pulse" /> GENERATE AGREEMENT
-              </button>
+            <div className="flex items-center gap-3">
+              <select className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10">
+                <option value="">All Statuses</option>
+                <option value="draft">Active Draft</option>
+                <option value="executed">Executed</option>
+              </select>
+              <select className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10">
+                <option value="">All Types</option>
+                <option value="Sale">Vessel Sale</option>
+                <option value="Charter">Charter Agreement</option>
+                <option value="Service">Service Agreement</option>
+              </select>
             </div>
           </div>
 
-          {/* Ledger Records Table (2/3 width) */}
-          <div className="lg:col-span-2 space-y-6">
-            <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-2.5 flex items-center gap-2">
-              <History size={14} className="text-[#19A7C1]" /> Secure Ledger Audit Entries
-            </h2>
-            <div className="bg-[#041326]/40 border border-white/10 rounded-xl overflow-hidden shadow-sm">
-              <div className="flex bg-[#0a1c34]/20 border-b border-white/10 py-3.5 px-6 text-[9px] font-bold text-[#19A7C1] tracking-wider uppercase">
-                <div className="w-[45%]">Contract details & unique ID</div>
-                <div className="w-[30%] font-semibold text-slate-300">Parties involved</div>
-                <div className="w-[15%] text-slate-300 font-semibold">Status</div>
-                <div className="w-[10%] text-right text-slate-300 font-semibold">Actions</div>
-              </div>
-
-              <div className="divide-y divide-[#1e293b]">
-                {/* Entry 1 */}
-                <div className="flex items-center py-4 px-6 text-xs hover:bg-[#0a1c34]/20/50 transition-colors">
-                  <div className="w-[45%] pr-4">
-                    <div className="font-semibold text-white truncate">{foundation.title}</div>
-                    <div className="text-[8px] text-[#19A7C1] tracking-wider font-manrope mt-1 uppercase">ID: REP-0992 | EDIT_OK</div>
-                  </div>
-                  <div className="w-[30%] text-[10px] text-slate-300">
-                    <span className="font-semibold text-white">{partyA.name}</span> <span className="text-slate-500">v</span> <span className="font-semibold text-white">{partyB.name}</span>
-                  </div>
-                  <div className="w-[15%]">
-                    <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${isExecuted ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" : "bg-amber-500/10 border border-amber-500/20 text-amber-400"}`}>
-                      {isExecuted ? "Executed ✓" : "Active Draft"}
-                    </span>
-                  </div>
-                  <div className="w-[10%] text-right">
-                    <button 
-                      onClick={() => {
-                        setWorkflowStep('editor');
-                      }}
-                      className="text-[9px] text-[#19A7C1] hover:text-[#22BCD8] uppercase tracking-wider font-bold underline">
-                      {isExecuted ? "View" : "Edit"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Entry 2 */}
-                <div className="flex items-center py-4 px-6 text-xs hover:bg-[#0a1c34]/20/50 transition-colors">
-                  <div className="w-[45%] pr-4">
-                    <div className="font-semibold text-white truncate">Bespoke Crew Procurement Charter</div>
-                    <div className="text-[8px] text-[#19A7C1] tracking-wider font-manrope mt-1 uppercase">ID: REP-0824 | VERIFIED</div>
-                  </div>
-                  <div className="w-[30%] text-[10px] text-slate-300">
-                    <span className="font-semibold text-white">CREWMASTER LTD</span> <span className="text-slate-500">v</span> <span className="font-semibold text-white">ALPHA MARINE</span>
-                  </div>
-                  <div className="w-[15%]">
-                    <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">
-                      Executed ✓
-                    </span>
-                  </div>
-                  <div className="w-[10%] text-right">
-                    <button 
-                      onClick={() => {
-                        setIsExecuted(true);
-                        setFoundation({
-                          ...foundation,
-                          type: "Charter Agreement",
-                          title: "Bespoke Crew Procurement Charter",
-                          value: "1,200,000"
-                        });
-                        setWorkflowStep('editor');
-                      }}
-                      className="text-[9px] text-[#19A7C1] hover:text-[#22BCD8] uppercase tracking-wider font-bold underline">
-                      View
-                    </button>
-                  </div>
-                </div>
-
-                {/* Entry 3 */}
-                <div className="flex items-center py-4 px-6 text-xs hover:bg-[#0a1c34]/20/50 transition-colors">
-                  <div className="w-[45%] pr-4">
-                    <div className="font-semibold text-white truncate">Vessel Dry Dock Refit Contract</div>
-                    <div className="text-[8px] text-[#19A7C1] tracking-wider font-manrope mt-1 uppercase">ID: REP-0412 | VERIFIED</div>
-                  </div>
-                  <div className="w-[30%] text-[10px] text-slate-300">
-                    <span className="font-semibold text-white">SHIPYARD ADRIATIC</span> <span className="text-slate-500">v</span> <span className="font-semibold text-white">{partyA.name}</span>
-                  </div>
-                  <div className="w-[15%]">
-                    <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">
-                      Executed ✓
-                    </span>
-                  </div>
-                  <div className="w-[10%] text-right">
-                    <button 
-                      onClick={() => {
-                        setIsExecuted(true);
-                        setFoundation({
-                          ...foundation,
-                          type: "Refit Agreement",
-                          title: "Vessel Dry Dock Refit Contract",
-                          value: "12,500,000"
-                        });
-                        setWorkflowStep('editor');
-                      }}
-                      className="text-[9px] text-[#19A7C1] hover:text-[#22BCD8] uppercase tracking-wider font-bold underline">
-                      View
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* --- BRAND NEW: ENTERPRISE BILLING & COMPANY WALLET --- */}
-        <div id="billing-panel" className="bg-[#041326]/40 border border-white/10 rounded-xl p-6 shadow-sm mt-8">
-          <div className="border-b border-white/10 pb-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-                <Shield size={16} className="text-[#19A7C1]" /> ENTERPRISE BILLING & COMPANY WALLET
-              </h2>
-              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-semibold">Manage your company's contract rendering units, transaction logs, and billing intervals</p>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#10B981]/10 border border-[#10B981]/15 rounded-lg text-[#10B981]">
-              <CheckCircle2 size={13} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider">Next Billing Cycle: July 14, 2026</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Wallet metrics */}
-            <div className="bg-[#0a1c34]/20 border border-white/10 rounded-xl p-5 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">CONTRACT CREDIT BALANCE</span>
-                {isCreditsLoading ? (
-                  <div className="flex items-center gap-2 text-[#19A7C1] py-2">
-                    <Loader2 size={16} className="animate-spin text-[#19A7C1]" />
-                    <span className="text-xs font-manrope text-[#19A7C1]/80">Synchronizing...</span>
-                  </div>
-                ) : (
-                  <span className="text-3xl font-bold text-[#19A7C1] tracking-tight">{creditsBalance} Credits</span>
-                )}
-                
-                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/10">
-                  <div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">THIS MONTH USAGE</span>
-                    <span className="text-[12px] font-semibold text-white">14 Credits</span>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">LIFETIME ACTIONS</span>
-                    <span className="text-[12px] font-semibold text-white">112 Credits</span>
-                  </div>
-                </div>
-
-                {/* Interactive Merchant Card Verification State */}
-                <div className="mt-5 pt-4 border-t border-white/10 space-y-3">
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">CORPORATE PAYMENT CARD STATUS</span>
-                  {isPaymentMethodValid ? (
-                    <div className="bg-[#10B981]/5 border border-[#10B981]/15 rounded-lg p-3 text-[10px] space-y-2">
-                      <div className="flex items-center justify-between text-[#10B981] font-semibold uppercase tracking-wider">
-                        <span className="flex items-center gap-1.5"><CheckCircle2 size={12} /> VISA (*9012) Active</span>
-                        <span className="text-[8px] text-[#10B981] bg-[#10B981]/10 px-1 py-0.5 rounded">SUITABLE</span>
-                      </div>
-                      <p className="text-[9px] text-slate-400 leading-snug">Primary corporate settlement channel is verified. Instant credit draw and billing enabled.</p>
-                      <button 
-                        onClick={togglePaymentMethodValid}
-                        className="w-full mt-1.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[8px] font-bold uppercase tracking-wider rounded-md transition-all">
-                        Simulate Payment Revocation (De-authorize)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="bg-red-500/5 border border-red-900/50 rounded-lg p-3 text-[10px] space-y-2">
-                      <div className="flex items-center justify-between text-red-400 font-semibold uppercase tracking-wider">
-                        <span className="flex items-center gap-1.5"><AlertCircle size={12} className="animate-pulse" /> NO PAYMENT METHOD</span>
-                        <span className="text-[8px] text-red-400 bg-red-950 px-1 py-0.5 rounded">UNSUITABLE</span>
-                      </div>
-                      <p className="text-[9px] text-red-300 leading-snug">Service execution is locked. All draft deployments and editing tools are halted due to payment de-authorization.</p>
-                      <button 
-                        onClick={togglePaymentMethodValid}
-                        className="w-full mt-1.5 py-1 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] text-[8px] font-bold uppercase tracking-wider rounded-md transition-all shadow-sm">
-                        Configure & Authorize Card (VISA *9012)
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-white/10 text-[9px] text-slate-400 leading-relaxed uppercase tracking-wider font-semibold">
-                {isPaymentMethodValid ? "🔔 1 Agreement in Draft is currently pending. Simulating transactions is fully authorized." : "⚠️ BILLING ALERT: Connect a valid corporate card to resume services."}
-              </div>
-            </div>
-
-            {/* Credit packages selector */}
-            <div className="lg:col-span-2 space-y-4">
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider block">PURCHASE SECURE PRE-PAID CONTRACT CREDITS</span>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                {[
-                  { name: "Starter Pack", desc: "For boutique firms", credits: 100, price: "$25" },
-                  { name: "Professional Pack", desc: "Best value model", credits: 500, price: "$100", best: true },
-                  { name: "Enterprise Pack", desc: "For complex yards", credits: 2500, price: "$400" },
-                  { name: "Custom Partner", desc: "Bespoke operations", credits: 10000, price: "Negotiated" }
-                ].map((pack) => (
-                  <div key={pack.name} className={`bg-[#0a1c34]/20 border flex flex-col justify-between p-4 rounded-xl shadow-sm hover:shadow-md transition-all relative ${pack.best ? 'border-[#19A7C1] bg-[#19A7C1]/5' : 'border-white/10'}`}>
-                    {pack.best && (
-                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] text-[7px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                        MOST POPULAR
-                      </span>
-                    )}
-                    <div>
-                      <span className="text-[9px] font-bold text-white block truncate">{pack.name}</span>
-                      <span className="text-[8px] text-slate-400 block mt-0.5 leading-tight">{pack.desc}</span>
-                      <span className="text-md font-bold text-[#19A7C1] tracking-tight block mt-2">{pack.credits} Credits</span>
-                      <span className="text-[11px] font-semibold text-white block mt-0.5">{pack.price}</span>
-                    </div>
-                    {pack.price === "Negotiated" ? (
-                      <button 
-                        onClick={() => alert("Please contact our sales team for bespoke Enterprise plans: sales@uphi.cloud")}
-                        className="mt-4 w-full bg-[#041326]/40 hover:bg-white/5 text-white border border-white/10 py-1.5 rounded-lg text-[8px] tracking-wider font-bold uppercase transition-all">
-                        Contact Sales
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => buyCredits(pack.credits, pack.name, pack.price)}
-                        className="mt-4 w-full bg-[#19A7C1]/10 hover:bg-[#19A7C1] text-[#19A7C1] hover:text-slate-950 border border-[#19A7C1]/20 py-1.5 rounded-lg text-[8px] tracking-wider font-bold uppercase transition-all">
-                        Buy Pack
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Purchase History */}
-              <div className="mt-4 pt-4 border-t border-white/10">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-2">CREDIT DISPATCH HISTORY LOGS</span>
-                <div className="max-h-[100px] overflow-y-auto custom-scrollbar border border-white/10 rounded-lg bg-[#0a1c34]/20">
-                  <table className="w-full text-[9px] text-left text-slate-300 font-manrope">
-                    <thead className="bg-[#041326]/40 text-slate-400 font-bold uppercase">
-                      <tr>
-                        <th className="p-2">Date Purchased</th>
-                        <th className="p-2">Packet Description</th>
-                        <th className="p-2">Credits Assigned</th>
-                        <th className="p-2">Price Paid</th>
-                        <th className="p-2 text-right">Status</th>
+          <div className="bg-[#141924] border border-white/5 rounded-md overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/5 bg-[#2D2D2D]/30">
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[15%]">Contract ID</th>
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[25%] cursor-pointer hover:text-[#E8EAED] transition-colors" onClick={() => requestSort('title')}>
+                    <div className="flex items-center gap-1">Agreement {sortConfig?.key === 'title' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</div>
+                  </th>
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[20%]">Parties</th>
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[10%] cursor-pointer hover:text-[#E8EAED] transition-colors" onClick={() => requestSort('date')}>
+                    <div className="flex items-center gap-1">Date {sortConfig?.key === 'date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</div>
+                  </th>
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[15%] cursor-pointer hover:text-[#E8EAED] transition-colors" onClick={() => requestSort('status')}>
+                    <div className="flex items-center gap-1">Status {sortConfig?.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</div>
+                  </th>
+                  <th className="py-3 px-5 text-[11px] font-semibold text-[#BBC0C4] uppercase tracking-widest w-[15%] text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {sortedData.map((contract) => (
+                  <React.Fragment key={contract.id}>
+                    <tr onClick={() => toggleRow(contract.id)} className="hover:bg-white/5 transition-colors group cursor-pointer">
+                      <td className="py-4 px-5 text-[13px] font-medium text-[#E8EAED] flex items-center gap-2">
+                        {expandedRows.has(contract.id) ? <ChevronUp size={14} className="text-[#80868B]" /> : <ChevronDown size={14} className="text-[#80868B]" />}
+                        {contract.id}
+                      </td>
+                      <td className="py-4 px-5">
+                        <div className="font-semibold text-[#E8EAED] text-[14px]">{contract.title}</div>
+                        <div className="text-[12px] text-[#BBC0C4] mt-1">{contract.type}</div>
+                      </td>
+                      <td className="py-4 px-5 text-[13px] text-[#BBC0C4] font-medium">
+                        <span className="text-[#E8EAED]">{contract.partyA}</span> <span className="opacity-50 mx-1">v</span> <span className="text-[#E8EAED]">{contract.partyB}</span>
+                      </td>
+                      <td className="py-4 px-5 text-[13px] text-[#BBC0C4]">
+                        {contract.date}
+                      </td>
+                      <td className="py-4 px-5">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider ${contract.status === 'executed' ? "bg-green-500/10 text-[#81C995] border border-green-500/20" : "bg-yellow-500/10 text-[#FDD663] border border-yellow-500/20"}`}>
+                          {contract.status === 'executed' ? "Executed ✓" : "Active Draft"}
+                        </span>
+                      </td>
+                      <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={() => {
+                            if (contract.status === 'executed') {
+                              setIsExecuted(true);
+                              setFoundation({ ...foundation, type: contract.type, title: contract.title, value: contract.value });
+                            } else {
+                              setIsExecuted(false);
+                            }
+                            setWorkflowStep('editor');
+                          }}
+                          className="text-[12px] font-medium text-[#00D4FF] hover:text-white transition-colors cursor-pointer"
+                        >
+                          {contract.status === 'executed' ? "View Document" : "Resume Draft"}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedRows.has(contract.id) && (
+                      <tr className="bg-[#121212]/50 border-none">
+                        <td colSpan={6} className="py-4 px-6 relative">
+                           {/* Subtle left indicator border */}
+                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#1E1E1E]"></div>
+                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 border border-white/5 rounded-md bg-[#18181A]">
+                              <div>
+                                 <h4 className="text-[10px] uppercase tracking-widest text-[#80868B] mb-2 font-semibold">Contract Summary</h4>
+                                 <div className="text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 p-3 rounded border border-white/5">
+                                   Standard terms applied for {contract.type.toLowerCase()}. Total contract value validated at {contract.value} USD. Initialized and locked via internal digital signature process.
+                                 </div>
+                              </div>
+                              <div>
+                                 <h4 className="text-[10px] uppercase tracking-widest text-[#80868B] mb-2 font-semibold">Key Entities</h4>
+                                 <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
+                                       <div className="w-1.5 h-1.5 rounded-full bg-[#00D4FF]"></div> {contract.partyA} (Principal)
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
+                                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div> {contract.partyB} (Counterparty)
+                                    </div>
+                                 </div>
+                              </div>
+                              <div>
+                                 <h4 className="text-[10px] uppercase tracking-widest text-[#80868B] mb-2 font-semibold">Validation & Lifecycle</h4>
+                                 <div className="space-y-2">
+                                     <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
+                                       <Shield size={12} className="text-[#81C995]"/> {contract.status === 'executed' ? 'Audit Log: Verified' : 'Audit Log: Drafted'}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
+                                       <Calendar size={12}/> Target Completion: 30 Days
+                                    </div>
+                                 </div>
+                              </div>
+                           </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#1e293b]">
-                      {purchaseHistory.map((h, index) => (
-                        <tr key={index} className="hover:bg-[#041326]/40/50">
-                          <td className="p-2 font-manrope text-slate-400">{h.date}</td>
-                          <td className="p-2 font-semibold text-white">{h.packet}</td>
-                          <td className="p-2 text-[#19A7C1] font-bold">+{h.credits} Credits</td>
-                          <td className="p-2 font-semibold text-slate-350">{h.price}</td>
-                          <td className="p-2 text-right text-emerald-400 font-semibold uppercase">✓ Completed</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#041326] text-slate-200 font-manrope overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-system-bg text-system-text-primary font-manrope overflow-hidden">
       
       {/* Top Navbar */}
-      <div className="h-14 shrink-0 border-b border-white/10 flex items-center justify-between px-6 bg-[#0a1c34]/20/90 backdrop-blur-md z-20 shadow-sm animate-in fade-in">
-        <div className="flex items-center gap-6">
+      <div className="h-12 shrink-0 border-b border-system-border-base flex items-center justify-between px-6 bg-system-surface z-20 shadow-sm animate-in fade-in">
+        <div className="max-w-screen-2xl mx-auto w-full flex items-center justify-between">
+          <div className="flex items-center gap-6">
           <button onClick={() => {
             setWorkflowStep('hub');
-          }} className="text-[#19A7C1] hover:text-white transition-all group relative">
+          }} className="text-[#00D4FF] hover:text-white transition-all group relative">
             <ArrowLeft size={16} />
             <span className="absolute left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] tracking-widest whitespace-nowrap bg-[#0a1c34]/20 text-white px-2 py-1 rounded">
               Return to Legal Entrance
             </span>
           </button>
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 bg-[#19A7C1]/5 border border-[#19A7C1]/15 flex items-center justify-center rounded-lg">
-                <FileSignature size={14} className="text-[#19A7C1]" />
+             <div className="w-8 h-8 bg-[#00D4FF]/5 border border-[#00D4FF]/15 flex items-center justify-center rounded-lg">
+                <FileSignature size={14} className="text-[#00D4FF]" />
              </div>
              <div>
                <div className="text-[12px] font-bold uppercase tracking-wider text-white leading-none">CONTRACT STUDIO V4</div>
@@ -1969,11 +1666,13 @@ ${contractFields.auditTrail}
              onClick={handleExecute} 
              disabled={isExecuted} 
              className={`h-9 px-4 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
-               isExecuted ? 'bg-emerald-600 text-white cursor-not-allowed shadow-none' : 'bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] hover:bg-[#22BCD8] hover:shadow-md'
+               isExecuted ? 'bg-emerald-600 text-white cursor-not-allowed shadow-none' : 'bg-[#00D4FF]/20 text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.3)] hover:bg-[#33DDFF] hover:shadow-md'
              }`}>
              {isExecuted ? 'AGREEMENT EXECUTED ✓' : `DEPLOY (${getContractCost(foundation.type || 'Service Agreement')} CREDITS)`}
            </button>
         </div>
+      </div>
+
       </div>
 
       {!isPaymentMethodValid ? (
@@ -2017,7 +1716,7 @@ ${contractFields.auditTrail}
                     if (el) el.scrollIntoView({ behavior: 'smooth' });
                   }, 150);
                 }}
-                className="w-full h-10 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer">
+className="w-full h-10 bg-[#00D4FF]/10 hover:bg-[#00D4FF]/25 border border-[#00D4FF]/30 text-[#00D4FF] hover:text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.1)] text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer">
                 <CreditCard size={14} /> Go to Billing Panel & Authorize Payment
               </button>
               
@@ -2032,12 +1731,13 @@ ${contractFields.auditTrail}
       ) : (
         <>
           {/* --- HORIZONTAL TRANSACTION MICRO-PROCESS GRAPH --- */}
-          <div className="h-16 shrink-0 bg-[#0a1c34]/20 border-b border-white/10 px-8 flex items-center justify-between z-10 select-none shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-        <div className="flex items-center gap-2 shrink-0">
+          <div className="h-12 shrink-0 bg-[#0a1c34]/20 border-b border-white/10 px-8 flex items-center z-10 select-none shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+            <div className="max-w-screen-2xl mx-auto w-full flex items-center justify-between gap-8">
+              <div className="flex items-center gap-2 shrink-0">
           <div className="text-[10px] font-extrabold text-white uppercase tracking-wider font-manrope">Transaction Status:</div>
-          <div className="w-2 h-2 rounded-full bg-[#19A7C1] animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-[#00D4FF] animate-pulse" />
         </div>
-        <div className="flex flex-1 items-center justify-around max-w-4xl mx-auto gap-4 px-6">
+        <div className="flex flex-1 items-center justify-around max-w-5xl mx-auto gap-4 px-6">
           {[
             { label: 'Commercial Foundation', targetSec: 'Commercial Foundation' },
             { label: 'Parties', targetSec: 'Parties' },
@@ -2063,7 +1763,7 @@ ${contractFields.auditTrail}
                   status === 'completed'
                     ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30'
                     : status === 'active'
-                      ? 'bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] border border-[#19A7C1] ring-4 ring-[#19A7C1]/10'
+                      ? 'bg-[#00D4FF]/20 text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.3)] border border-[#00D4FF] ring-4 ring-[#00D4FF]/10'
                       : 'bg-[#041326]/40 text-slate-500 border border-white/10 group-hover:border-slate-500 group-hover:text-slate-300'
                 }`}>
                   {status === 'completed' ? '✓' : `0${idx + 1}`}
@@ -2073,7 +1773,7 @@ ${contractFields.auditTrail}
                     status === 'completed'
                       ? 'text-emerald-500'
                       : status === 'active'
-                        ? 'text-[#19A7C1]'
+                        ? 'text-[#00D4FF]'
                         : 'text-slate-500 group-hover:text-slate-300'
                   }`}>
                     {step.label}
@@ -2096,29 +1796,30 @@ ${contractFields.auditTrail}
           <span>KOD:</span>
           <span className="text-slate-700 font-bold">{contractFields.verificationCode.slice(0, 9)}</span>
         </div>
+        </div>
       </div>
 
       {/* Main Grid (25% | 35% | 40%) */}
       <div className="flex flex-1 min-h-0 overflow-hidden w-full">
         
         {/* LEFT PANEL - Contract Structure (with Collapsible Sidebar and Vertical Milestones) */}
-        <div className={`shrink-0 border-r border-white/10 flex flex-col bg-[#041326]/40 text-slate-300 transition-all duration-300 ${sidebarCollapsed ? 'w-[72px]' : 'w-[25%]'}`}>
-          <div className="p-4 border-b border-white/10 flex items-center justify-between overflow-hidden">
+        <div className={`shrink-0 border-r border-white/5 flex flex-col bg-[#141924] text-slate-300 transition-all duration-300 ${sidebarCollapsed ? 'w-[72px]' : 'w-[320px]'}`}>
+          <div className="p-4 border-b border-white/5 flex items-center justify-between overflow-hidden">
             {!sidebarCollapsed && (
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate font-manrope">Agreement Sections</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate font-manrope">Agreement Sections</div>
             )}
             <button 
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 hover:bg-[#041326]/40 text-slate-400 hover:text-white rounded-lg transition-all mx-auto cursor-pointer"
+              className="p-1.5 hover:bg-white/5 text-slate-400 hover:text-white rounded-lg transition-all mx-auto cursor-pointer"
               title={sidebarCollapsed ? "Expand" : "Collapse"}
             >
               {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto no-scrollbar py-4 relative bg-[#041326]/40">
+          <div className="flex-1 overflow-y-auto no-scrollbar py-4 relative bg-[#141924]">
             
             {/* Elegant visual thin vertical timeline line connecting milestones */}
-            <div className={`absolute top-6 bottom-6 w-[2px] bg-[#1E293B] transition-all duration-300 ${sidebarCollapsed ? 'left-[35px]' : 'left-[31px]'}`} />
+            <div className={`absolute top-6 bottom-6 w-[1.5px] bg-white/10 transition-all duration-300 ${sidebarCollapsed ? 'left-[35px]' : 'left-[31px]'}`} />
 
             {sections.map((sec, idx) => {
               const completed = isSectionCompleted(sec);
@@ -2128,7 +1829,7 @@ ${contractFields.auditTrail}
                 <button
                   key={sec}
                   onClick={() => setActiveSection(sec)}
-                  className={`w-full text-left px-4 py-2.5 transition-colors flex items-center gap-3 relative group cursor-pointer ${active ? 'bg-[#19A7C1]/10 text-white font-semibold' : 'hover:bg-[#041326]/40/40 text-slate-400'}`}
+                  className={`w-full text-left px-4 py-3 transition-colors flex items-center gap-3 relative group cursor-pointer ${active ? 'bg-[#00D4FF]/10 text-white font-semibold' : 'hover:bg-white/5 text-slate-400'}`}
                 >
                   {/* Timeline milestone node bubble */}
                   <div className="z-10 shrink-0">
@@ -2136,7 +1837,7 @@ ${contractFields.auditTrail}
                       <div 
                         className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-manrope font-bold transition-all ${
                           active 
-                            ? 'bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] border border-[#19A7C1] ring-4 ring-[#19A7C1]/25 scale-110' 
+                            ? 'bg-[#00D4FF]/20 text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.3)] border border-[#00D4FF] ring-4 ring-[#00D4FF]/10 scale-105' 
                             : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
                         }`}
                         title="Stage Ready"
@@ -2147,8 +1848,8 @@ ${contractFields.auditTrail}
                       <div 
                         className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-manrope font-bold border transition-all ${
                           active 
-                            ? 'bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] border-[#19A7C1] ring-4 ring-[#19A7C1]/25 scale-110' 
-                            : 'bg-[#041326]/40 border-white/10 text-slate-500 group-hover:border-slate-500 group-hover:text-slate-300'
+                            ? 'bg-[#00D4FF]/20 text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.3)] border-[#00D4FF] ring-4 ring-[#00D4FF]/10 scale-105' 
+                            : 'bg-[#141924]/50 border-white/10 text-slate-500 group-hover:border-slate-500 group-hover:text-slate-300'
                         }`}
                       >
                         {String(idx + 1).padStart(2, '0')}
@@ -2159,22 +1860,22 @@ ${contractFields.auditTrail}
                   {/* Text labels: hidden when collapsed */}
                   {!sidebarCollapsed ? (
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider truncate transition-colors ${active ? 'text-white font-manrope' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest truncate transition-colors ${active ? 'text-white font-manrope' : 'text-slate-400 group-hover:text-slate-200'}`}>
                         {sec}
                       </span>
-                      <span className={`text-[8px] font-manrope uppercase tracking-widest mt-0.5 font-bold ${completed ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        {completed ? "READY ✓" : "PENDING ENTRY"}
+                      <span className={`text-[8.5px] font-manrope uppercase tracking-widest mt-0.5 font-bold ${completed ? 'text-emerald-400' : 'text-slate-500/60'}`}>
+                        {completed ? "READY ✓" : "PENDING"}
                       </span>
                     </div>
                   ) : (
                     /* Hover tooltip in collapsed mode */
-                    <div className="absolute left-[64px] bg-slate-950 border border-white/10 text-white text-[9px] uppercase font-bold tracking-widest px-2.5 py-1.5 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-2 group-hover:translate-x-0 whitespace-nowrap z-50 shadow-[0_10px_20px_rgba(0,0,0,0.5)]">
+                    <div className="absolute left-[64px] bg-[#141924] border border-white/10 text-white text-[9px] uppercase font-bold tracking-widest px-2.5 py-1.5 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-x-2 group-hover:translate-x-0 whitespace-nowrap z-50 shadow-xl">
                       {sec} <span className={`text-[8px] font-manrope ml-2 ${completed ? "text-emerald-400" : "text-amber-500"}`}>{completed ? "READY ✓" : "PENDING"}</span>
                     </div>
                   )}
 
                   {!sidebarCollapsed && active && (
-                    <ChevronRight size={12} className="ml-auto text-[#19A7C1] shrink-0" />
+                    <ChevronRight size={12} className="ml-auto text-[#00D4FF] shrink-0" />
                   )}
                 </button>
               );
@@ -2183,13 +1884,13 @@ ${contractFields.auditTrail}
         </div>
 
         {/* CENTER PANEL - AI Generated + Human Revised Workspace */}
-        <div className={`shrink-0 border-r border-white/10 flex flex-col bg-[#0a1c34]/20 shadow-sm z-10 relative transition-all duration-300 ${sidebarCollapsed ? 'w-[43%]' : 'w-[40%]'}`}>
-          <div className="h-12 border-b border-white/10 flex items-center justify-between px-6 bg-[#041326]/40 shrink-0">
-            <div className="text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-2 font-manrope">
-              <FileSignature size={14} className="text-[#19A7C1]" /> INTERACTIVE CLAUSE WORKSPACE
+        <div className={`shrink-0 border-r border-white/10 flex flex-col bg-[#0a1c34]/20 shadow-sm z-10 relative transition-all duration-300 ${sidebarCollapsed ? 'w-[520px]' : 'w-[500px]'}`}>
+          <div className="h-12 border-b border-white/5 flex items-center justify-between px-6 bg-[#141924] shrink-0">
+            <div className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2 font-manrope">
+              <FileSignature size={14} className="text-[#00D4FF]" /> INTERACTIVE CLAUSE WORKSPACE
             </div>
             
-            <span className="px-2 py-0.5 bg-[#0a1c34]/20 text-[#19A7C1] text-[8px] font-manrope rounded tracking-wider uppercase font-bold border border-white/10">
+            <span className="px-2 py-0.5 bg-[#00D4FF]/10 text-[#00D4FF] text-[8px] font-manrope rounded tracking-wider uppercase font-bold border border-[#00D4FF]/20">
               Active: {currentVersion}
             </span>
           </div>
@@ -2220,7 +1921,7 @@ ${contractFields.auditTrail}
                       }}
                       className={`py-1.5 px-0.5 rounded text-[8.5px] font-manrope font-bold tracking-tight uppercase border transition-all cursor-pointer ${
                         isCurrent
-                          ? 'bg-[#19A7C1]/20 text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.3)] border-[#19A7C1] shadow-sm'
+? 'bg-[#00D4FF]/20 text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.3)] border-[#00D4FF] shadow-sm'
                           : 'bg-[#0a1c34]/20 text-slate-400 border-white/10 hover:bg-white/5 hover:text-white'
                       }`}
                     >
@@ -2234,21 +1935,21 @@ ${contractFields.auditTrail}
              {/* Dynamic AI Contract Advisor Widget embedded permanently at the top of form pages */}
              {activeSection !== "Contract AI Advisor" && (
                 <div id="contract-ai-advisor-widget" className="bg-[#041326]/40 border border-white/10 rounded-xl p-4 mb-6 shadow-sm relative overflow-hidden group animate-in fade-in">
-                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#19A7C1]/45 to-transparent"></div>
+                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#00D4FF]/45 to-transparent"></div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded bg-[#19A7C1]/10 flex items-center justify-center text-[#19A7C1] ring-1 ring-[#19A7C1]/20">
+                      <div className="w-5 h-5 rounded bg-[#00D4FF]/10 flex items-center justify-center text-[#00D4FF] ring-1 ring-[#00D4FF]/20">
                         <Cpu size={11} className="animate-pulse" />
                       </div>
                       <span className="text-[10px] font-bold text-white tracking-wider uppercase font-manrope">Contract AI Advisor</span>
                     </div>
-                    <span className="px-1.5 py-0.5 bg-[#19A7C1]/10 text-[#19A7C1] text-[8px] font-manrope rounded tracking-wider uppercase font-bold">
+                    <span className="px-1.5 py-0.5 bg-[#00D4FF]/10 text-[#00D4FF] text-[8px] font-manrope rounded tracking-wider uppercase font-bold">
                       {activeSection} ANALYSIS
                     </span>
                   </div>
                   
                   <div className="text-[10.5px] leading-relaxed text-slate-300 mb-3 bg-[#0a1c34]/20 p-3 rounded-lg border border-white/10">
-                    The digital contract intelligence engine is active, monitoring all clauses in real-time. Input custom instructions below or click the prompt helpers to conduct an instantaneous risk scan of the selected <strong className="text-[#19A7C1] font-bold font-manrope">{activeSection}</strong> parameters.
+                    The digital contract intelligence engine is active, monitoring all clauses in real-time. Input custom instructions below or click the prompt helpers to conduct an instantaneous risk scan of the selected <strong className="text-[#00D4FF] font-bold font-manrope">{activeSection}</strong> parameters.
                   </div>
 
                   {/* Suggest standard prompt helpers based on active section */}
@@ -2273,12 +1974,12 @@ ${contractFields.auditTrail}
                       {advisorMessages.filter(m => m.sectionName === activeSection).map((msg, mIdx) => (
                         <div key={mIdx} className="text-[10px] leading-relaxed border-b border-white/10 pb-2 last:border-0 last:pb-0">
                           <div className="flex items-center justify-between mb-1">
-                            <span className={`text-[8px] font-manrope uppercase tracking-wider font-bold ${msg.role === 'user' ? 'text-[#19A7C1]' : 'text-slate-400'}`}>
+                            <span className={`text-[8px] font-manrope uppercase tracking-wider font-bold ${msg.role === 'user' ? 'text-[#00D4FF]' : 'text-slate-400'}`}>
                               {msg.role === 'user' ? '👤 ANALYTICAL REQUEST' : '📊 CONTRACT INTELLIGENCE ADVISE'}
                             </span>
                             <span className="text-[7px] text-slate-500 font-manrope">{msg.timestamp}</span>
                           </div>
-                          <div className={`whitespace-pre-wrap ${msg.role === 'user' ? 'text-[#19A7C1]' : 'text-slate-200 font-serif'}`}>
+                          <div className={`whitespace-pre-wrap ${msg.role === 'user' ? 'text-[#00D4FF]' : 'text-slate-200 font-serif'}`}>
                             {msg.text}
                           </div>
                         </div>
@@ -2300,14 +2001,14 @@ ${contractFields.auditTrail}
                         }
                       }}
                       disabled={isAdvisorLoading}
-                      className="flex-1 bg-[#0a1c34]/20 border border-white/10 text-[10.5px] px-3 py-1.5 rounded-lg focus:outline-none focus:border-[#19A7C1] focus:ring-1 focus:ring-[#19A7C1] text-white placeholder-slate-500 disabled:opacity-50 transition-all font-manrope"
+                      className="flex-1 bg-[#0a1c34]/20 border border-white/10 text-[10.5px] px-3 py-1.5 rounded-lg focus:outline-none focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] text-white placeholder-slate-500 disabled:opacity-50 transition-all font-manrope"
                     />
                     <button 
                       onClick={() => handleAdvisorConsult()}
                       disabled={isAdvisorLoading || !advisorInput.trim()}
-                      className="px-3 bg-[#19A7C1]/10 border border-[#19A7C1]/20 hover:bg-[#19A7C1]/20 text-[#19A7C1] hover:text-white rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-transparent shrink-0 cursor-pointer"
+                      className="bg-[#00D4FF]/10 border border-[#00D4FF]/20 hover:bg-[#00D4FF]/20 text-[#00D4FF] hover:text-white rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-transparent shrink-0 cursor-pointer"
                     >
-                      {isAdvisorLoading ? <Loader2 size={12} className="animate-spin text-[#19A7C1]" /> : <Send size={11} />}
+                      {isAdvisorLoading ? <Loader2 size={12} className="animate-spin text-[#00D4FF]" /> : <Send size={11} />}
                     </button>
                   </div>
                 </div>
@@ -2343,7 +2044,7 @@ ${contractFields.auditTrail}
                         <span className="text-[10px] font-bold text-white uppercase tracking-wider block font-manrope">
                           {activeClause.title}
                         </span>
-                        <span className={`text-[8.5px] font-semibold mt-0.5 inline-block uppercase ${isLocked ? 'text-emerald-400 font-manrope' : 'text-[#19A7C1] font-manrope'}`}>
+                        <span className={`text-[8.5px] font-semibold mt-0.5 inline-block uppercase ${isLocked ? 'text-emerald-400 font-manrope' : 'text-[#00D4FF] font-manrope'}`}>
                           Status: {activeClause.status}
                         </span>
                       </div>
@@ -2383,7 +2084,7 @@ ${contractFields.auditTrail}
                     {/* AI Rewrite Terminal integrated inside the active editing segment */}
                     <div className="p-5 border-b border-white/10 bg-slate-950 text-white space-y-3 font-manrope text-[10px]">
                       <div className="flex items-center justify-between">
-                        <span className="text-[#19A7C1] font-bold tracking-widest uppercase text-[9px]">🔮 AI CLAUSE TUNER TERMINAL</span>
+                        <span className="text-[#00D4FF] font-bold tracking-widest uppercase text-[9px]">🔮 AI CLAUSE TUNER TERMINAL</span>
                         <span className="text-slate-500 text-[8px]">MODEL: GEMINI-2.5-FLASH</span>
                       </div>
                       
@@ -2410,7 +2111,7 @@ ${contractFields.auditTrail}
                               } catch (err) {} finally { setIsAiRevising(false); }
                             }
                           }}
-                          className="flex-1 bg-[#0a1c34]/20 border border-white/10 text-[10.5px] px-3 py-2 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-[#19A7C1] disabled:opacity-30 disabled:cursor-not-allowed"
+                          className="flex-1 bg-[#0a1c34]/20 border border-white/10 text-[10.5px] px-3 py-2 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:border-[#00D4FF] disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                         <button 
                           onClick={async () => {
@@ -2427,7 +2128,7 @@ ${contractFields.auditTrail}
                             } catch (err) {} finally { setIsAiRevising(false); }
                           }}
                           disabled={isLocked || isAiRevising || !individualAiInstruction.trim()}
-                          className="px-4 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] font-bold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="bg-[#00D4FF]/10 hover:bg-[#00D4FF]/25 border border-[#00D4FF]/30 text-[#00D4FF] hover:text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.1)] font-bold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           {isAiRevising ? <Loader2 size={13} className="animate-spin" /> : "REWRITE"}
                         </button>
@@ -2464,7 +2165,7 @@ ${contractFields.auditTrail}
                           className={`w-full min-h-[180px] text-xs font-serif leading-relaxed border p-4 rounded-xl focus:outline-none transition-all ${
                             isLocked
                               ? 'bg-[#0a1c34]/20 border-white/10 text-slate-550 cursor-not-allowed'
-                              : 'bg-[#0a1c34]/20 border-white/10 text-white focus:border-[#19A7C1] focus:ring-1 focus:ring-[#19A7C1] shadow-inner'
+                              : 'bg-[#0a1c34]/20 border-white/10 text-white focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] shadow-inner'
                           }`}
                           placeholder="You can edit the clause text directly here..."
                         />
@@ -2506,9 +2207,9 @@ ${contractFields.auditTrail}
                                     return c;
                                   }));
                                 }}
-                                className="w-full text-left p-3 bg-[#0a1c34]/20 hover:bg-white/5 border border-white/10 hover:border-[#19A7C1] rounded-xl text-[10.5px] leading-relaxed text-slate-300 transition-all hover:shadow-s font-manrope cursor-pointer animate-in slide-in-from-top-1 dur-150"
+                                className="w-full text-left p-3 bg-[#0a1c34]/20 hover:bg-white/5 border border-white/10 hover:border-[#00D4FF] rounded-xl text-[10.5px] leading-relaxed text-slate-300 transition-all hover:shadow-s font-manrope cursor-pointer animate-in slide-in-from-top-1 dur-150"
                               >
-                                <span className="font-bold text-[8px] text-[#19A7C1] block uppercase tracking-wider mb-0.5 font-manrope">
+                                <span className="font-bold text-[8px] text-[#00D4FF] block uppercase tracking-wider mb-0.5 font-manrope">
                                   Alternative Clause Template #{aIdx + 1}
                                 </span>
                                 {alt.length > 150 ? alt.slice(0, 150) + "..." : alt}
@@ -2997,7 +2698,7 @@ ${contractFields.auditTrail}
                     <h2 className="text-[14px] font-bold text-white uppercase tracking-widest font-manrope">PARTICIPANTS & IDENTITY</h2>
                     <button
                       onClick={() => setShowAddParticipant(!showAddParticipant)}
-                      className="text-[9px] uppercase tracking-widest font-bold text-[#19A7C1] hover:text-white px-2.5 py-1 bg-[#19A7C1]/10 rounded border border-[#19A7C1]/30 flex items-center gap-1.5 transition-all text-center cursor-pointer"
+className="text-[9px] uppercase tracking-widest font-bold text-[#00D4FF] hover:text-white px-2.5 py-1 bg-[#00D4FF]/10 rounded border border-[#00D4FF]/30 flex items-center gap-1.5 transition-all text-center cursor-pointer"
                     >
                       <Plus size={11} /> {showAddParticipant ? "Close Form" : "Add Participant"}
                     </button>
@@ -3051,7 +2752,8 @@ ${contractFields.auditTrail}
                         <button 
                           onClick={() => {
                             if (!newParticipant.name || !newParticipant.role || !newParticipant.contact) {
-                              alert("Please fill in all fields.");
+                              console.warn("Form validation failed: Empty fields detected.");
+                              // alert("Please fill in all fields.");
                               return;
                             }
                             const added = {
@@ -3064,7 +2766,7 @@ ${contractFields.auditTrail}
                             setNewParticipant({ name: '', role: '', contact: '' });
                             setShowAddParticipant(false);
                           }}
-                          className="px-4 py-1 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] font-bold text-[9px] uppercase tracking-widest rounded transition-colors cursor-pointer font-manrope"
+className="px-4 py-1 bg-[#00D4FF]/10 hover:bg-[#00D4FF]/25 border border-[#00D4FF]/30 text-[#00D4FF] hover:text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.1)] font-bold text-[9px] uppercase tracking-widest rounded transition-colors cursor-pointer font-manrope"
                         >
                           Save Participant
                         </button>
@@ -3087,7 +2789,7 @@ ${contractFields.auditTrail}
                               <div className="text-[11px] font-bold text-white uppercase tracking-wider truncate">{p.name}</div>
                               <div className="text-[9px] text-slate-400 font-manrope tracking-wide mt-0.5">{p.role}</div>
                               <div className="text-[8.5px] text-slate-500 flex items-center gap-1.5 mt-1">
-                                <Mail size={10} className="text-[#19A7C1]" /> {p.contact}
+                                <Mail size={10} className="text-[#00D4FF]" /> {p.contact}
                               </div>
                             </div>
                             <button 
@@ -3117,7 +2819,7 @@ ${contractFields.auditTrail}
 
                   {/* Document Configuration Workspace */}
                   <div className="bg-[#0a1c34]/20 border border-white/10 p-5 rounded-lg space-y-4 animate-in fade-in">
-                    <h3 className="text-[10px] font-bold text-[#19A7C1] uppercase tracking-widest border-b border-white/10/50 pb-2 font-manrope">
+                    <h3 className="text-[10px] font-bold text-[#00D4FF] uppercase tracking-widest border-b border-white/10/50 pb-2 font-manrope">
                       New Attachment Configuration
                     </h3>
 
@@ -3138,7 +2840,7 @@ ${contractFields.auditTrail}
                             onClick={() => setUploadSelectedParty(opt.id)}
                             className={`p-2.5 rounded border text-left text-[10px] flex flex-col justify-between transition-all cursor-pointer ${
                               uploadSelectedParty === opt.id
-                                ? "bg-[#19A7C1]/10 text-[#19A7C1] border-[#19A7C1]"
+                                ? "bg-[#00D4FF]/10 text-[#00D4FF] border-[#00D4FF]"
                                 : "bg-[#00050d] text-slate-400 border-white/10 hover:bg-white/5"
                             }`}
                           >
@@ -3166,7 +2868,7 @@ ${contractFields.auditTrail}
                               setShowUploadModal(docType);
                               setUploadProgress(prev => ({ ...prev, [docType + "_" + uploadSelectedParty]: 0 }));
                             }}
-                            className="bg-[#19A7C1]/10 hover:bg-[#19A7C1]/20 border border-[#19A7C1]/20 hover:border-[#19A7C1]/50 text-[#19A7C1] hover:text-white px-2.5 py-1.5 rounded text-[10px] uppercase font-manrope font-bold tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                            className="bg-[#00D4FF]/10 hover:bg-[#00D4FF]/20 border border-[#00D4FF]/20 hover:border-[#00D4FF]/50 text-[#00D4FF] hover:text-white px-2.5 py-1.5 rounded text-[10px] uppercase font-manrope font-bold tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
                           >
                             <Plus size={10} /> {docType}
                           </button>
@@ -3180,7 +2882,7 @@ ${contractFields.auditTrail}
                           placeholder="Or type custom document type... e.g., Tax Registry"
                           value={newCustomDocType}
                           onChange={e => setNewCustomDocType(e.target.value)}
-                          className="text-[11px] bg-[#0a1c34]/20 border border-white/10 rounded p-1.5 flex-1 placeholder-slate-650 h-9 font-medium text-white shadow-inner focus:border-[#19A7C1] outline-none"
+className="text-[11px] bg-[#0a1c34]/20 border border-white/10 rounded p-1.5 flex-1 placeholder-slate-650 h-9 font-medium text-white shadow-inner focus:border-[#00D4FF] outline-none"
                         />
                         <button
                           type="button"
@@ -3195,7 +2897,7 @@ ${contractFields.auditTrail}
                               setNewCustomDocType("");
                             }
                           }}
-                          className="px-3.5 h-9 bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] text-[10px] font-manrope font-bold rounded uppercase tracking-wider transition-all disabled:opacity-55 cursor-pointer flex items-center gap-1"
+                          className="px-3.5 h-9 bg-[#00D4FF]/10 hover:bg-[#00D4FF]/25 border border-[#00D4FF]/30 text-[#00D4FF] text-[10px] font-manrope font-bold rounded uppercase tracking-wider transition-all disabled:opacity-55 cursor-pointer flex items-center gap-1"
                           disabled={!newCustomDocType.trim()}
                         >
                           <Plus size={11} /> Add & Upload
@@ -3220,7 +2922,7 @@ ${contractFields.auditTrail}
                           return (
                             <div
                               key={doc.id || idx}
-                              className="bg-[#050c1e] border border-white/10 rounded-xl overflow-hidden hover:border-[#19A7C1]/50 transition-all duration-300 shadow-xl flex flex-col md:flex-row group animate-in fade-in zoom-in-95"
+                              className="bg-[#050c1e] border border-white/10 rounded-xl overflow-hidden hover:border-[#00D4FF]/50 transition-all duration-300 shadow-xl flex flex-col md:flex-row group animate-in fade-in zoom-in-95"
                             >
                               {/* Left column: Highly styled visual card / certificate frame */}
                               <div className="w-full md:w-[155px] bg-[#0a1c34]/20 p-3 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-white/10 relative shrink-0">
@@ -3242,7 +2944,7 @@ ${contractFields.auditTrail}
                                 ) : (
                                   /* Certificate/Document Frame - Certificate borders with corner seals */
                                   <div className="w-[130px] h-[82px] rounded-md border border-amber-600/30 bg-[#041326]/40 overflow-hidden shadow-md relative p-1.5 group-hover:scale-[1.03] transition-transform duration-300">
-                                    <div className="absolute inset-0.5 border border-dashed border-[#19A7C1]/20"></div>
+                                    <div className="absolute inset-0.5 border border-dashed border-[#00D4FF]/20"></div>
                                     {doc.previewUrl ? (
                                       <img src={doc.previewUrl} alt={doc.type} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                     ) : (
@@ -3263,7 +2965,7 @@ ${contractFields.auditTrail}
                                     </h4>
                                     <span className={`text-[8px] font-manrope font-extrabold px-2 py-0.5 rounded-full uppercase tracking-widest ${
                                       isPartyA 
-                                        ? "bg-[#19A7C1]/10 text-[#19A7C1] border border-[#19A7C1]/30" 
+                                        ? "bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/30" 
                                         : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
                                     }`}>
                                       {doc.party}
@@ -3324,23 +3026,23 @@ ${contractFields.auditTrail}
              {activeSection === "Contract AI Advisor" && (
                 <div className="space-y-6 animate-in fade-in">
                   <h2 className={sectionTitleClass}>CONTRACT AI ADVISOR</h2>
-                  <div className="bg-[#19A7C1]/10 border border-[#19A7C1]/30 p-4 rounded text-[#19A7C1] text-[10px] leading-relaxed uppercase tracking-widest font-bold mb-6">
+                  <div className="bg-[#00D4FF]/10 border border-[#00D4FF]/30 p-4 rounded text-[#00D4FF] text-[10px] leading-relaxed uppercase tracking-widest font-bold mb-6">
                     <Cpu size={16} className="mb-2" />
                     Purpose: Contract assistance only. Not legal advice. Not law firm services.
                   </div>
                   
                   {aiState.task ? (
                      <div className="bg-[#0a1c34]/20 border border-white/10 p-6 rounded-lg text-center animate-in fade-in zoom-in-95">
-                        <Cpu size={32} className={`mx-auto mb-4 ${aiState.status === 'loading' ? 'text-[#19A7C1] animate-pulse' : 'text-emerald-400'}`} />
+<Cpu size={32} className={`mx-auto mb-4 ${aiState.status === 'loading' ? 'text-[#00D4FF] animate-pulse' : 'text-emerald-400'}`} />
                         <div className="text-[12px] font-bold text-white uppercase tracking-widest mb-2">{aiState.task}</div>
                         {aiState.status === 'loading' ? (
-                           <div className="text-[10px] text-[#19A7C1] uppercase tracking-widest">Processing request...</div>
+<div className="text-[10px] text-[#00D4FF] uppercase tracking-widest">Processing request...</div>
                         ) : (
                            <div className="mt-4">
                               <div className="text-[11px] text-slate-300 bg-[#041326]/40 p-4 rounded border border-white/10 text-left leading-relaxed">
                                 {aiState.result}
                               </div>
-                              <button onClick={() => setAiState({task: null, status: 'idle'})} className="mt-6 text-[10px] text-[#19A7C1] uppercase tracking-widest font-bold hover:text-white transition-colors border border-[#19A7C1]/30 py-2 px-4 rounded">
+<button onClick={() => setAiState({task: null, status: 'idle'})} className="mt-6 text-[10px] text-[#00D4FF] uppercase tracking-widest font-bold hover:text-white transition-colors border border-[#00D4FF]/30 py-2 px-4 rounded">
                                 Return to Advisor
                               </button>
                            </div>
@@ -3349,9 +3051,9 @@ ${contractFields.auditTrail}
                   ) : (
                     <div className="grid gap-3">
                       {["Clause Review", "Risk Detection", "Jurisdiction Analysis", "Classification Compliance", "Flag State Considerations", "Sanctions Screening Alerts", "Redline Analysis"].map((f) => (
-                        <button key={f} onClick={() => runAdvisor(f)} className="text-left bg-[#0a1c34]/20 border border-white/10 p-4 rounded hover:border-[#19A7C1]/50 transition-colors group">
+<button key={f} onClick={() => runAdvisor(f)} className="text-left bg-[#0a1c34]/20 border border-white/10 p-4 rounded hover:border-[#00D4FF]/50 transition-colors group">
                           <div className="text-[11px] font-bold text-white uppercase tracking-widest">{f}</div>
-                          <div className="text-[9px] text-slate-500 uppercase tracking-widest mt-1 group-hover:text-[#19A7C1]">Initialize Process <ArrowRight size={12} className="inline"/></div>
+                          <div className="text-[9px] text-slate-500 uppercase tracking-widest mt-1 group-hover:text-[#00D4FF]">Initialize Process <ArrowRight size={12} className="inline"/></div>
                         </button>
                       ))}
                     </div>
@@ -3536,9 +3238,10 @@ ${contractFields.auditTrail}
                           onClick={() => {
                             const verifyUrl = `${window.location.origin}?verify=${contractFields.verificationCode || '8A7F-31CC-0E2A-5501-7F03'}`;
                             navigator.clipboard.writeText(verifyUrl);
-                            alert("Sovereign verification link successfully copied to clipboard.");
+                            console.log("Sovereign verification link successfully copied to clipboard.");
+                            // alert("Sovereign verification link successfully copied to clipboard.");
                           }}
-                          className="w-full bg-[#19A7C1]/10 hover:bg-[#19A7C1]/20 border border-[#19A7C1]/30 hover:border-[#19A7C1] text-[#19A7C1] hover:text-white transition-all text-[9.5px] font-manrope font-bold tracking-widest uppercase py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
+className="w-full bg-[#00D4FF]/10 hover:bg-[#00D4FF]/20 border border-[#00D4FF]/30 hover:border-[#00D4FF] text-[#00D4FF] hover:text-white transition-all text-[9.5px] font-manrope font-bold tracking-widest uppercase py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <FileSignature size={12} /> COPY VERIFIABLE LINK
                         </button>
@@ -3566,11 +3269,11 @@ ${contractFields.auditTrail}
           {/* Output Toolbar */}
           <div className="h-12 bg-[#0a1c34]/20/95 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-6 shrink-0 absolute top-0 left-0 right-0 z-10">
             <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider font-manrope flex items-center gap-2">
-              <Eye size={14} className="text-[#19A7C1]" /> LIVE EXECUTIVE DOCUMENT WORKSPACE
+<Eye size={14} className="text-[#00D4FF]" /> LIVE EXECUTIVE DOCUMENT WORKSPACE
             </div>
             <div className="flex items-center gap-4 text-slate-400">
-               <button className="hover:text-[#19A7C1] transition-colors cursor-pointer" title="Search"><Search size={14} /></button>
-               <button onClick={handleDownload} className="hover:text-[#19A7C1] transition-colors cursor-pointer" title="Download PDF"><Download size={14} /></button>
+               <button className="hover:text-[#00D4FF] transition-colors cursor-pointer" title="Search"><Search size={14} /></button>
+              <button onClick={handleDownload} className="hover:text-[#00D4FF] transition-colors cursor-pointer" title="Download PDF"><Download size={14} /></button>
             </div>
           </div>
 
@@ -3895,7 +3598,7 @@ ${contractFields.auditTrail}
                             <div key={p.id || idx} className="bg-slate-50 p-2 rounded border border-slate-150">
                               <span className="font-sans font-bold text-slate-800 uppercase block">{p.name}</span>
                               <span className="text-slate-500 block text-[9.5px]">Role: {p.role}</span>
-                              <span className="text-[#19A7C1] font-sans block text-[9px]">{p.contact}</span>
+<span className="text-[#00D4FF] font-sans block text-[9px]">{p.contact}</span>
                             </div>
                           ))}
                         </div>
@@ -3918,7 +3621,7 @@ ${contractFields.auditTrail}
                                 <span className="text-slate-500 block text-[9.5px] truncate max-w-[170px]">{doc.name}</span>
                               </div>
                               <div className="text-right">
-                                <span className="text-[#19A7C1] font-extrabold uppercase text-[7px] bg-slate-50 border border-slate-200 px-1 py-0.2 rounded font-sans tracking-wide block mb-0.5">SECURE_REF</span>
+ <span className="text-[#00D4FF] font-extrabold uppercase text-[7px] bg-slate-50 border border-slate-200 px-1 py-0.2 rounded font-sans tracking-wide block mb-0.5">SECURE_REF</span>
                                 <span className="text-slate-400 font-sans text-[8px] block">{doc.size}</span>
                               </div>
                             </div>
@@ -3963,7 +3666,7 @@ ${contractFields.auditTrail}
                   <p className="font-bold underline uppercase tracking-wider text-[10px] text-slate-700 mt-6">7.2 Digital Identity Authorized Signatures</p>
                   <div className="grid grid-cols-2 gap-12 mt-4 pt-4 border-t border-slate-100">
                     <div className="border-t border-black pt-2 relative">
-                      <div className="text-[9px] font-bold uppercase tracking-widest text-[#19A7C1]">For & On Behalf Of (A)</div>
+<div className="text-[9px] font-bold uppercase tracking-widest text-[#00D4FF]">For & On Behalf Of (A)</div>
                       <div className="text-[11px] font-serif mt-1 font-bold">{partyA.name}</div>
                       <div className="text-[9px] text-slate-500 mt-1 font-sans">
                         Emails: {[partyA.email, ...(partyA.additionalEmails || [])].filter(Boolean).join(", ")}
@@ -4054,7 +3757,7 @@ ${contractFields.auditTrail}
                       <div className="border-r border-slate-200 pr-4 flex flex-col h-full">
                         <div className="text-[10px] font-sans font-bold text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-1.5 mb-3 flex items-center justify-between">
                           <span>{partyA.name || "Party A"} Attachments</span>
-                          <span className="text-[8px] bg-[#19A7C1]/10 text-[#19A7C1] px-1.5 py-0.2 rounded font-sans font-bold">PARTY A</span>
+<span className="text-[8px] bg-[#00D4FF]/10 text-[#00D4FF] px-1.5 py-0.2 rounded font-sans font-bold">PARTY A</span>
                         </div>
                         
                         <div className="space-y-4 overflow-y-auto flex-1 pr-1">
@@ -4172,12 +3875,12 @@ ${contractFields.auditTrail}
           </div>
         </div>
       </div>
-        </>
-      )}
+    </>
+  )}
       {showExecutionModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#0a1c34]/20/95 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-[#0A203D] border border-emerald-500/30 p-8 rounded-2xl max-w-lg w-full shadow-[0_0_60px_rgba(16,185,129,0.25)] text-center relative overflow-hidden animate-in zoom-in-95">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-[#19A7C1] animate-pulse"></div>
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-[#00D4FF] animate-pulse"></div>
             
             {executionState === 'signing' && (
               <div className="py-6 space-y-5 animate-in zoom-in-95">
@@ -4195,10 +3898,10 @@ ${contractFields.auditTrail}
             {executionState === 'sending_emails' && (
               <div className="py-2 space-y-4 text-left animate-in fade-in duration-250 font-sans">
                 <div className="text-center mb-4">
-                  <div className="w-12 h-12 bg-[#19A7C1]/10 rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
-                    <Mail size={22} className="text-[#19A7C1]" />
+<div className="w-12 h-12 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
+                    <Mail size={22} className="text-[#00D4FF]" />
                   </div>
-                  <h3 className="text-[11px] font-sans font-bold text-[#19A7C1] tracking-widest uppercase">EMAIL DISTRIBUTION</h3>
+                  <h3 className="text-[11px] font-sans font-bold text-[#00D4FF] tracking-widest uppercase">EMAIL DISTRIBUTION</h3>
                   <h2 className="text-base font-bold text-white mt-1 uppercase">Dispatching Contract Copies to Parties</h2>
                 </div>
                 
@@ -4207,14 +3910,14 @@ ${contractFields.auditTrail}
                     <div key={idx} className="flex items-center justify-between border-b border-white/10/50 pb-2.5 last:border-b-0 last:pb-0">
                       <div className="min-w-0 pr-3">
                         <div className="text-[10.5px] font-bold text-white uppercase tracking-wide truncate">{item.name}</div>
-                        <div className="text-[8px] text-[#19A7C1] font-sans mt-0.5 uppercase tracking-wider">{item.role}</div>
+<div className="text-[8px] text-[#00D4FF] font-sans mt-0.5 uppercase tracking-wider">{item.role}</div>
                         <div className="text-[9px] text-slate-400 font-sans mt-0.5 truncate">{item.email}</div>
                       </div>
                       
                       <div className="shrink-0">
                         {item.status === 'sending' ? (
-                          <span className="text-[8.5px] font-sans font-bold text-[#19A7C1] animate-pulse flex items-center gap-1.5 uppercase">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#19A7C1] animate-ping"></span> Sending
+<span className="text-[8.5px] font-sans font-bold text-[#00D4FF] animate-pulse flex items-center gap-1.5 uppercase">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00D4FF] animate-ping"></span> Sending
                           </span>
                         ) : (
                           <span className="text-[8.5px] font-sans font-bold text-emerald-400 flex items-center gap-1 uppercase">
@@ -4274,7 +3977,7 @@ ${contractFields.auditTrail}
                 <div className="grid grid-cols-2 gap-3 mt-6">
                   <button 
                     onClick={handleDownload} 
-                    className="w-full bg-[#19A7C1]/10 hover:bg-[#19A7C1]/25 border border-[#19A7C1]/30 text-[#19A7C1] hover:text-[#19A7C1] shadow-[0_0_15px_rgba(25,167,193,0.1)] font-bold tracking-widest uppercase text-[10px] py-3.5 rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-[0_4px_12px_rgba(25,167,193,0.15)] cursor-pointer font-sans"
+className="w-full bg-[#00D4FF]/10 hover:bg-[#00D4FF]/25 border border-[#00D4FF]/30 text-[#00D4FF] hover:text-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.1)] font-bold tracking-widest uppercase text-[10px] py-3.5 rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-[0_4px_12px_rgba(0,212,255,0.15)] cursor-pointer font-sans"
                   >
                     <Download size={13} /> DOWNLOAD AGREEMENT
                   </button>
@@ -4302,24 +4005,24 @@ ${contractFields.auditTrail}
       )}
 
       {showBillingWallModal && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#0a1c34]/20/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#041326]/40 border border-white/10 p-8 rounded-2xl max-w-lg w-full shadow-2xl shadow-black/80 text-center relative overflow-hidden animate-in zoom-in-95">
-            <div className="absolute top-0 left-0 w-full h-[3px] bg-[#19A7C1]"></div>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-system-surface border border-white/10 p-8 rounded-2xl max-w-lg w-full shadow-2xl shadow-black/80 text-center relative overflow-hidden animate-in zoom-in-95 font-manrope">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
             
-            <div className="w-14 h-14 bg-amber-55/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
+            <div className="w-14 h-14 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
               <CreditCard size={26} className="text-amber-500" />
             </div>
             
-            <h3 className="text-[10px] font-sans font-bold text-amber-500 tracking-wider uppercase mb-1">Insufficient Credit Balance</h3>
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-2 font-sans">Execution Blocked</h2>
+            <h3 className="text-[10px] font-manrope font-bold text-amber-500 tracking-wider uppercase mb-1">Insufficient Credit Balance</h3>
+            <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-2 font-manrope">Execution Blocked</h2>
             
-            <p className="text-[11.5px] text-slate-400 leading-relaxed mb-6 font-sans">
-              To publish this agreement (<strong className="text-white font-semibold font-sans">{foundation.type || 'Contract'}</strong>) and initiate certified signature distribution, <strong className="text-[#19A7C1] font-bold font-sans">{getContractCost(foundation.type)} Credits</strong> are required. You do not have sufficient balance.<br/><br/>
-              Your Current Balance: <span className="text-rose-450 font-bold font-sans">{creditsBalance} Credits</span>
+            <p className="text-[11.5px] text-slate-400 leading-relaxed mb-6 font-manrope">
+              To publish this agreement (<strong className="text-white font-semibold font-manrope">{foundation.type || 'Contract'}</strong>) and initiate certified signature distribution, <strong className="text-primary font-bold font-manrope">{getContractCost(foundation.type)} Credits</strong> are required. You do not have sufficient balance.<br/><br/>
+              Your Current Balance: <span className="text-rose-400 font-bold font-manrope">{creditsBalance} Credits</span>
             </p>
 
-            <div className="bg-[#0a1c34]/20 border border-white/10 rounded-xl p-4 mb-6 space-y-3 text-left">
-              <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wide font-sans">Secure Credit Top-up Packages:</div>
+            <div className="bg-system-bg border border-white/5 rounded-xl p-4 mb-6 space-y-3 text-left">
+              <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wide font-manrope">Secure Credit Top-up Packages:</div>
               <div className="space-y-2">
                 {[
                   { name: "Starter Pack", credits: 10, price: "$5", description: "Individual Agreements" },
@@ -4332,15 +4035,15 @@ ${contractFields.auditTrail}
                       buyCredits(pack.credits, pack.name, pack.price);
                       setShowBillingWallModal(false);
                     }}
-                    className="w-full flex items-center justify-between p-3 bg-[#0d1222] border border-white/10 hover:border-[#19A7C1] rounded-lg text-left transition-all hover:bg-[#111a33] group cursor-pointer"
+                    className="w-full flex items-center justify-between p-3 bg-system-surface border border-white/10 hover:border-primary rounded-lg text-left transition-all hover:bg-white/5 group cursor-pointer"
                   >
                     <div>
-                      <div className="text-xs font-bold text-white font-sans">{pack.name}</div>
-                      <div className="text-[10px] text-slate-400 font-sans">{pack.description} (+{pack.credits} Credits)</div>
+                      <div className="text-xs font-bold text-white font-manrope">{pack.name}</div>
+                      <div className="text-[10px] text-slate-400 font-manrope">{pack.description} (+{pack.credits} Credits)</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs font-bold text-[#19A7C1] group-hover:underline font-sans">{pack.credits} CREDITS</div>
-                      <div className="text-[10px] font-sans text-emerald-400">{pack.price}</div>
+                      <div className="text-xs font-bold text-primary group-hover:underline font-manrope">{pack.credits} CREDITS</div>
+                      <div className="text-[10px] font-manrope text-emerald-400">{pack.price}</div>
                     </div>
                   </button>
                 ))}
@@ -4406,24 +4109,24 @@ ${contractFields.auditTrail}
                 <X size={15} />
               </button>
               
-              <h3 className="text-[11px] font-sans font-bold text-[#19A7C1] tracking-widest uppercase mb-1">DOCUMENT UPLOAD</h3>
+              <h3 className="text-[11px] font-sans font-bold text-[#00D4FF] tracking-widest uppercase mb-1">DOCUMENT UPLOAD</h3>
               <h2 className="text-[12px] font-bold text-white uppercase tracking-wider mb-2 font-sans">
                 {tempFile ? "Confirm Details" : `Upload ${showUploadModal}`}
               </h2>
               <div className="text-[9.5px] uppercase font-sans tracking-wider text-slate-400 mb-4 bg-[#041326]/40 border border-white/10 px-2 py-1 rounded inline-block">
-                Assigned Owner: <span className="text-[#19A7C1] font-bold">{uploadSelectedParty}</span>
+                Assigned Owner: <span className="text-[#00D4FF] font-bold">{uploadSelectedParty}</span>
               </div>
               
               {/* Interactive file upload simulation zone */}
               {isUploading ? (
                 <div className="py-8 text-center space-y-4">
-                  <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-[#19A7C1] animate-spin mx-auto"></div>
+                  <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-[#00D4FF] animate-spin mx-auto"></div>
                   <div>
                     <div className="text-[10px] text-white font-sans uppercase tracking-widest font-bold">Encrypting & Uploading File...</div>
-                    <div className="text-[16px] text-[#19A7C1] font-sans mt-1 font-bold">{uploadProgress[progressKey]}%</div>
+                    <div className="text-[16px] text-[#00D4FF] font-sans mt-1 font-bold">{uploadProgress[progressKey]}%</div>
                   </div>
                   <div className="w-full bg-[#041326]/40 h-1.5 rounded-full overflow-hidden border border-slate-850">
-                    <div className="bg-[#19A7C1] h-full transition-all duration-100" style={{ width: `${uploadProgress[progressKey]}%` }}></div>
+                    <div className="bg-[#00D4FF] h-full transition-all duration-100" style={{ width: `${uploadProgress[progressKey]}%` }}></div>
                   </div>
                 </div>
               ) : (
@@ -4449,7 +4152,7 @@ ${contractFields.auditTrail}
                           }
                         }}
                         className={`border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
-                          dragActive ? 'border-[#19A7C1] bg-[#19A7C1]/10' : 'border-white/10 hover:border-white/10 bg-[#0a1c34]/20'
+                          dragActive ? 'border-[#00D4FF] bg-[#00D4FF]/10' : 'border-white/10 hover:border-white/10 bg-[#0a1c34]/20'
                         }`}
                         onClick={() => {
                           document.getElementById('attachments-file-input')?.click();
@@ -4457,7 +4160,7 @@ ${contractFields.auditTrail}
                       >
                         <UploadCloud size={28} className="mx-auto text-slate-500 mb-3 hover:scale-110 transition-transform" />
                         <p className="text-[10px] font-bold text-white uppercase tracking-wider">Drag Image Here or Click to Select</p>
-                        <p className="text-[8px] text-[#19A7C1] font-sans uppercase mt-1">Reads actual file name & size</p>
+                        <p className="text-[8px] text-[#00D4FF] font-sans uppercase mt-1">Reads actual file name & size</p>
                         <p className="text-[8px] text-rose-400 font-sans uppercase mt-0.5">PNG, JPG formats only (Max 10MB)</p>
                       </div>
                     </div>
@@ -4474,7 +4177,7 @@ ${contractFields.auditTrail}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="text-[11px] font-bold text-white truncate">{tempFileName}</div>
-                          <div className="text-[9px] text-[#19A7C1] font-sans mt-0.5">File size: {tempFileSize}</div>
+                          <div className="text-[9px] text-[#00D4FF] font-sans mt-0.5">File size: {tempFileSize}</div>
                         </div>
                         <button
                           type="button"
@@ -4502,7 +4205,7 @@ ${contractFields.auditTrail}
                               setTempDocType(e.target.value);
                               setTempValidationError(null);
                             }}
-                            className="w-full bg-[#0a1c34]/20 border border-slate-850 rounded-md px-2.5 py-1.5 text-[11px] text-white focus:border-[#19A7C1] outline-none font-sans"
+                            className="w-full bg-[#0a1c34]/20 border border-slate-850 rounded-md px-2.5 py-1.5 text-[11px] text-white focus:border-[#00D4FF] outline-none font-sans"
                           >
                             <option value="">-- Choose Type --</option>
                             {documentTypes.map(type => (
@@ -4611,11 +4314,11 @@ ${contractFields.auditTrail}
       {isGeneratingPDF && (
         <div className="fixed inset-0 z-[11000] flex flex-col items-center justify-center bg-[#0a1c34]/20/95 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-[#041326]/40 border border-white/10 p-8 rounded-2xl max-w-sm w-full shadow-2xl shadow-black/80 text-center relative overflow-hidden animate-in zoom-in-95">
-            <div className="absolute top-0 left-0 w-full h-[3px] bg-[#19A7C1]" />
-            <div className="w-12 h-12 bg-[#19A7C1]/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#19A7C1]/20">
-              <Loader2 size={24} className="text-[#19A7C1] animate-spin" />
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-[#00D4FF]" />
+            <div className="w-12 h-12 bg-[#00D4FF]/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#00D4FF]/20">
+              <Loader2 size={24} className="text-[#00D4FF] animate-spin" />
             </div>
-            <h3 className="text-[10px] font-sans font-bold text-[#19A7C1] tracking-wider uppercase mb-1">
+            <h3 className="text-[10px] font-sans font-bold text-[#00D4FF] tracking-wider uppercase mb-1">
               Document Compiler Active
             </h3>
             <h2 className="text-base font-bold text-white uppercase tracking-wider mb-2 font-sans">
@@ -4623,7 +4326,7 @@ ${contractFields.auditTrail}
             </h2>
             <div className="w-full bg-[#0a1c34]/20 border border-white/10 h-2.5 rounded-full overflow-hidden mt-4 mb-2">
               <div 
-                className="bg-[#19A7C1] h-full transition-all duration-300"
+                className="bg-[#00D4FF] h-full transition-all duration-300"
                 style={{ width: `${pdfProgress}%` }}
               />
             </div>
