@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { 
   auth, 
+  db,
   handleFirestoreError, 
-  OperationType 
+  OperationType,
+  logAuditEvent
 } from '../../services/firebase-service';
+import { doc, getDoc } from 'firebase/firestore';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -12,7 +15,8 @@ import {
   GoogleAuthProvider, 
   OAuthProvider,
   sendSignInLinkToEmail,
-  updateProfile
+  updateProfile,
+  signOut
 } from 'firebase/auth';
 import { seedUserDataIfNecessary } from '../lib/firebaseSeeder';
 import { 
@@ -39,6 +43,14 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [tempUser, setTempUser] = useState<any>(null); // For intermediate 2FA sequence
 
+  React.useEffect(() => {
+    const localErr = window.localStorage.getItem('auth_error');
+    if (localErr) {
+      setErrorMsg(localErr);
+      window.localStorage.removeItem('auth_error');
+    }
+  }, []);
+
   const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -50,8 +62,13 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const signedUser = userCredential.user;
         
-        // Seed default profile values if necessary (e.g. they registered but database was wiped or wasn't compiled)
-        await seedUserDataIfNecessary(signedUser.uid, signedUser.email || '', signedUser.displayName || '', signedUser.displayName ? `${signedUser.displayName} Workspace` : "Global Trade & Maritime Operations Ltd");
+        // Verify user document existence in Firestore (Unregistered users cannot enter)
+        const userDocRef = doc(db, 'users', signedUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (!userDocSnap.exists()) {
+          await signOut(auth);
+          throw new Error("Bu kullanıcı kayıtlı değil. Giriş engellendi.");
+        }
         
         // Transition to 2FA screen for enterprise security representation
         setTempUser(signedUser);
@@ -60,18 +77,29 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         if (!email || !password || !displayName || !companyName) {
           throw new Error("All fields (Full Name, Email, Password, Company Name) are required for B2B registration.");
         }
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const signedUser = userCredential.user;
-        
-        // Update user profile display name
-        await updateProfile(signedUser, { displayName: displayName });
-        
-        // Seed database
-        await seedUserDataIfNecessary(signedUser.uid, email, displayName, companyName);
-        
-        setTempUser(signedUser);
-        setSuccessMsg("B2B Enterprise Account registered successfully. Magic verification link dispatched to " + email);
-        setMode('verify-email');
+        window.sessionStorage.setItem('is_registering', 'true');
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const signedUser = userCredential.user;
+          
+          // Update user profile display name
+          await updateProfile(signedUser, { displayName: displayName });
+          
+          // Seed database
+          await seedUserDataIfNecessary(signedUser.uid, email, displayName, companyName);
+          
+          try {
+            await logAuditEvent(signedUser.uid, "User registered successfully with email: " + email, "User Session Profile");
+          } catch (logErr) {
+            console.error("Log registration audit failed:", logErr);
+          }
+          
+          setTempUser(signedUser);
+          setSuccessMsg("B2B Enterprise Account registered successfully. Magic verification link dispatched to " + email);
+          setMode('verify-email');
+        } finally {
+          window.sessionStorage.removeItem('is_registering');
+        }
       } else if (mode === 'forgot-password') {
         if (!email) throw new Error("A valid email address is required to reset passwords.");
         await sendPasswordResetEmail(auth, email);
@@ -87,40 +115,19 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         setErrorMsg("This email address is already bound to a corporate workspace.");
         return;
       }
+
+      if (error.code === 'auth/operation-not-allowed') {
+        setErrorMsg("Firebase Console'da 'Email/Password' (E-posta/Şifre) ile giriş/kayıt yöntemi etkinleştirilmemiş. Lütfen Firebase Console -> Authentication -> Sign-in method sekmesinden E-posta/Şifre (Email/Password) sağlayıcısını etkinleştirin.");
+        return;
+      }
       
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
         setErrorMsg("Invalid corporate credentials. Access denied.");
         return;
       }
       
-      // Sandbox fallback for AI Studio Preview Environment only if Firebase is not properly initialized
-      console.warn("Authentication failed, falling back to Sandbox B2B simulation:", error);
-      const safeEmail = email || "demo@contractstudio.io";
-      const uidSuffix = safeEmail.replace(/[^a-zA-Z0-9]/g, '');
-      const mockUser = {
-        uid: `demo-b2b-user-${uidSuffix}`,
-        email: safeEmail,
-        displayName: displayName || email?.split('@')[0] || "B2B Client Counsel",
-        emailVerified: true,
-        photoURL: null,
-        providerId: "password"
-      };
-      
-      if (mode === 'login') {
-        setTempUser(mockUser);
-        setMode('2fa');
-      } else if (mode === 'register') {
-        try {
-          await seedUserDataIfNecessary(mockUser.uid, mockUser.email, mockUser.displayName, companyName || "Global Sovereign Hub");
-        } catch (seedErr) {
-          console.warn("Failed seeding mock db profile, proceeding with sandbox bypass:", seedErr);
-        }
-        setTempUser(mockUser);
-        setSuccessMsg("Sandbox Registration Bypass enabled. Direct Access unlocked.");
-        setMode('verify-email');
-      } else if (mode === 'forgot-password') {
-        setSuccessMsg("Sandbox Reset Mode: Cryptographic reset request simulated successfully for email: " + email);
-      }
+      console.error("Authentication failed:", error);
+      setErrorMsg(error.message || "An authentication error occurred.");
     } finally {
       setLoading(false);
     }
@@ -134,32 +141,25 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       const result = await signInWithPopup(auth, provider);
       const googleUser = result.user;
       
-      // Seed Database
-      await seedUserDataIfNecessary(
-        googleUser.uid, 
-        googleUser.email || '', 
-        googleUser.displayName || '', 
-        googleUser.displayName ? `${googleUser.displayName} Workspace` : "Global Trade & Maritime Operations LLC"
-      );
+      // Verify user document existence in Firestore (Unregistered users cannot enter)
+      const userDocRef = doc(db, 'users', googleUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (!userDocSnap.exists()) {
+        await signOut(auth);
+        throw new Error("Bu Google hesabı sistemde kayıtlı değil. Giriş engellendi.");
+      }
 
       // Successfully pass User up
+      try {
+        await logAuditEvent(googleUser.uid, "User authenticated via Google SSO successfully", "User Session Profile");
+      } catch (logErr) {
+        console.error("SSO log failed:", logErr);
+      }
       onLoginSuccess(googleUser);
       onNavigate('/dashboard');
     } catch (err: any) {
-      console.warn("Google Auth failed. Simulating authorization...", err);
-      const mockUser = {
-        uid: "google-sandbox-user-111",
-        email: "google.reviewer@contractstudio.io",
-        displayName: "Sovereign Google Partner",
-        emailVerified: true,
-      };
-      
-      try {
-        await seedUserDataIfNecessary(mockUser.uid, mockUser.email, mockUser.displayName, "Global Trade & Maritime Operations LLC");
-      } catch (e) {}
-      
-      onLoginSuccess(mockUser);
-      onNavigate('/dashboard');
+      console.error("Google Auth failed:", err);
+      setErrorMsg(err.message || "Google Auth verification failed.");
     } finally {
       setLoading(false);
     }
@@ -173,29 +173,24 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       const result = await signInWithPopup(auth, provider);
       const msUser = result.user;
       
-      // Seed Database
-      await seedUserDataIfNecessary(
-        msUser.uid, 
-        msUser.email || '', 
-        msUser.displayName || '', 
-        msUser.displayName ? `${msUser.displayName} Workspace` : "Bilateral Sovereign Maritime Group"
-      );
+      // Verify user document existence in Firestore (Unregistered users cannot enter)
+      const userDocRef = doc(db, 'users', msUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (!userDocSnap.exists()) {
+        await signOut(auth);
+        throw new Error("Bu Microsoft hesabı sistemde kayıtlı değil. Giriş engellendi.");
+      }
 
+      try {
+        await logAuditEvent(msUser.uid, "User authenticated via Microsoft SSO successfully", "User Session Profile");
+      } catch (logErr) {
+        console.error("SSO log failed:", logErr);
+      }
       onLoginSuccess(msUser);
       onNavigate('/dashboard');
     } catch (err: any) {
-      console.warn("Microsoft SSO failed in Firebase. Simulating authorization...", err);
-      const mockUser = {
-        uid: "microsoft-sandbox-user-222",
-        email: "ms.counsel@contractstudio.io",
-        displayName: "Corporate Microsoft Partner",
-        emailVerified: true,
-      };
-      try {
-        await seedUserDataIfNecessary(mockUser.uid, mockUser.email, mockUser.displayName, "Bilateral Sovereign Maritime Group");
-      } catch (e) {}
-      onLoginSuccess(mockUser);
-      onNavigate('/dashboard');
+      console.error("Microsoft SSO failed:", err);
+      setErrorMsg(err.message || "Microsoft Auth verification failed.");
     } finally {
       setLoading(false);
     }
@@ -217,9 +212,8 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       window.localStorage.setItem('emailForSignIn', email);
       setSuccessMsg("Magic sign-in token successfully dispatched to " + email);
     } catch (err: any) {
-      console.warn("Magic Link auth failed. Simulating dispatch successfully.");
-      setSuccessMsg("Sandbox Magic Link simulated successfully. Verification clearance bypass unlocked.");
-      setMode('verify-email');
+      console.error("Magic Link auth failed:", err);
+      setErrorMsg(err.message || "Failed to send magic link.");
     } finally {
       setLoading(false);
     }
@@ -230,8 +224,15 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
     setLoading(true);
     
     // Simulate enterprise-level 2FA code checking. Any code accepts for sandbox preview, but standard is seeded code '123456'
-    setTimeout(() => {
+    setTimeout(async () => {
       if (mfaCode.length === 6) {
+        if (tempUser?.uid) {
+          try {
+            await logAuditEvent(tempUser.uid, "User completed 2FA authorization and signed in successfully", "User Session Profile");
+          } catch (logErr) {
+            console.error("Login log failed:", logErr);
+          }
+        }
         onLoginSuccess(tempUser);
         onNavigate('/dashboard');
       } else {
@@ -313,7 +314,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                 className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
               >
                 {loading && <Loader2 size={14} className="animate-spin" />}
-                Verify Token clearance <ArrowRight size={14} />
+                <span>Verify Token clearance</span> <ArrowRight size={14} />
               </button>
             </form>
           ) : mode === 'verify-email' ? (
@@ -456,9 +457,11 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                     className="w-full flex justify-center py-3 px-4 border border-transparent rounded text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
                   >
                     {loading && <Loader2 size={14} className="animate-spin" />}
-                    {mode === 'login' && "Authenticate Terminal"}
-                    {mode === 'register' && "Initialize Sovereign Environment"}
-                    {mode === 'forgot-password' && "Send Reset Link"}
+                    <span>
+                      {mode === 'login' && "Authenticate Terminal"}
+                      {mode === 'register' && "Initialize Sovereign Environment"}
+                      {mode === 'forgot-password' && "Send Reset Link"}
+                    </span>
                   </button>
                 </div>
               </form>

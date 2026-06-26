@@ -5,8 +5,8 @@ import {
   Menu, ChevronLeft, Send, Trash2, Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Calendar
 } from 'lucide-react';
 import { chatWithContractAdvisor, rewriteContractClauseWithAi } from '../services/gemini';
-import { db } from '../services/firebase-service';
-import { doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
+import { db, logAuditEvent } from '../services/firebase-service';
+import { doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
@@ -271,6 +271,16 @@ export default function ContractStudio({ template, company, userType, onBack }: 
   ];
 
   const [workflowStep, setWorkflowStep] = useState<'hub' | 'editor'>('hub');
+  
+  // Firestore active contract states
+  const [activeContractId, setActiveContractId] = useState<string | null>(null);
+  const [dbContracts, setDbContracts] = useState<any[]>([]);
+  const [loadingContracts, setLoadingContracts] = useState<boolean>(true);
+  
+  // Search & filter states for the hub
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<string>('');
   const [activeSection, setActiveSection] = useState(sections[0]);
 
   // ADIM 1 Wizard Data State
@@ -652,6 +662,103 @@ Annex B: Hourly Fee Rates and Overtime Standards`,
     loadCreditsAndHistory();
   }, [company?.id]);
 
+  // Fetch contracts list from Firestore in real-time
+  useEffect(() => {
+    if (!company?.id) {
+      setLoadingContracts(false);
+      return;
+    }
+    setLoadingContracts(true);
+    const q = query(collection(db, "contracts"), where("userId", "==", company.id));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const contractsList: any[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        // Ensure partyA and partyB are objects in the final contract item for editor compatibility
+        const finalPartyA = data.partyA || { name: data.seller || "Party A", role: "Seller", email: "", address: "", idNumber: "", confirmEmail: false, additionalEmails: [] };
+        const finalPartyB = data.partyB || { name: data.buyer || "Party B", role: "Buyer", email: "", address: "", idNumber: "", confirmEmail: false, additionalEmails: [] };
+        
+        // Get string names for display/search
+        const sellerName = data.seller || finalPartyA.name || "Party A";
+        const buyerName = data.buyer || finalPartyB.name || "Party B";
+
+        contractsList.push({
+          ...data,
+          id: docSnap.id,
+          title: data.title || "Untitled Contract",
+          type: data.agreementType || "Service Agreement",
+          seller: sellerName,
+          buyer: buyerName,
+          partyA: finalPartyA,
+          partyB: finalPartyB,
+          date: data.updatedAt ? data.updatedAt.split('T')[0] : (data.createdAt ? data.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]),
+          status: data.status?.toLowerCase() === 'executed' ? 'executed' : 'draft',
+          value: data.contractValue || "0"
+        });
+      });
+      // Sort by updatedAt desc
+      contractsList.sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setDbContracts(contractsList);
+      setLoadingContracts(false);
+    }, (error) => {
+      console.error("Error loading contracts from Firestore:", error);
+      setLoadingContracts(false);
+    });
+
+    return () => unsubscribe();
+  }, [company?.id]);
+
+  // Auto-save contract draft back to Firestore with debounce
+  useEffect(() => {
+    if (!activeContractId || !company?.id || workflowStep !== 'editor') return;
+
+    const saveTimeout = setTimeout(async () => {
+      try {
+        const contractRef = doc(db, "contracts", activeContractId);
+        await updateDoc(contractRef, {
+          title: foundation.title,
+          agreementType: foundation.type,
+          seller: partyA.name,
+          buyer: partyB.name,
+          contractValue: foundation.value,
+          currency: foundation.currency,
+          status: isExecuted ? "executed" : "draft",
+          version: currentVersion,
+          updatedAt: new Date().toISOString(),
+          foundation,
+          jurisdiction,
+          partyA,
+          partyB,
+          contractFields,
+          participants,
+          clauses
+        });
+        console.log("Draft auto-saved successfully to Firestore.");
+      } catch (err) {
+        console.error("Error auto-saving contract draft:", err);
+      }
+    }, 1500); // 1.5s debounce
+
+    return () => clearTimeout(saveTimeout);
+  }, [
+    activeContractId,
+    foundation,
+    jurisdiction,
+    partyA,
+    partyB,
+    contractFields,
+    participants,
+    clauses,
+    isExecuted,
+    currentVersion,
+    workflowStep,
+    company?.id
+  ]);
+
   const buyCredits = async (credits: number, packetName: string, price: string) => {
     if (!company?.id) return;
     try {
@@ -988,6 +1095,37 @@ Annex B: Hourly Fee Rates and Overtime Standards`,
           contractTitle: foundation.title,
           createdAt: new Date().toISOString()
         });
+
+        // 3) Create or update record in contracts collection so it shows up in RepositoryView
+        if (activeContractId) {
+          const contractRef = doc(db, "contracts", activeContractId);
+          await updateDoc(contractRef, {
+            status: 'executed',
+            version: 'v5 Signed',
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          const contractsRef = collection(db, "contracts");
+          await addDoc(contractsRef, {
+            userId: company.id,
+            title: foundation.title,
+            agreementType: foundation.type || 'Service Agreement',
+            seller: partyA.name,
+            buyer: partyB.name,
+            contractValue: foundation.value,
+            currency: foundation.currency || 'USD',
+            status: 'executed',
+            version: 'v5 Signed',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        try {
+          await logAuditEvent(company.id, `Contract Executed & Signed: ${foundation.title}`, foundation.title);
+        } catch (logErr) {
+          console.error("Execution log failed:", logErr);
+        }
       }
 
       setCreditsBalance(newBalance);
@@ -1413,45 +1551,304 @@ ${contractFields.auditTrail}
   const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  if (workflowStep === 'hub') {
-    const defaultData = [
-      {
-        id: 'REP-0992',
-        title: foundation.title,
-        type: foundation.type,
-        partyA: partyA.name,
-        partyB: partyB.name,
-        date: new Date().toISOString().split('T')[0],
-        status: isExecuted ? 'executed' : 'draft',
-        value: foundation.value
-      },
-      {
-        id: 'REP-0824',
-        title: 'Bespoke Crew Procurement',
-        type: 'Charter Agreement',
-        partyA: 'CREWMASTER',
-        partyB: 'ALPHA MARINE',
-        date: '2026-06-15',
-        status: 'executed',
-        value: '1,200,000'
-      },
-      {
-        id: 'REP-0751',
-        title: 'Vessel Dry Docking Maintenance',
-        type: 'Service Agreement',
-        partyA: 'OCEANIC ENGINEERING',
-        partyB: 'PACIFIC FLEET',
-        date: '2026-06-10',
-        status: 'draft',
-        value: '850,000'
-      }
-    ];
+  const handleNewContract = async () => {
+    if (!company?.id) return;
+    try {
+      const newDocRef = doc(collection(db, "contracts"));
+      const initialFoundation = {
+        type: "Service Agreement",
+        title: "Eastern Mediterranean Technical Service Agreement",
+        transactionType: "Maintenance",
+        subjectMatter: "Provision of marine engineering and technical operational support services.",
+        objective: "To maintain optimal operational efficiency of the vessel fleet.",
+        description: "This Agreement establishes the commercial framework between the parties for the provision of marine engineering, technical support, maintenance, and operational consulting services for vessels operating within the designated region.",
+        value: "5,000,000",
+        currency: "USD",
+        geoScope: "Eastern Mediterranean",
+        operatingArea: "Aegean Sea & Levant Basin",
+        serviceLocation: "Greece & Cyprus Ports",
+        duration: "24 Months",
+        effectiveDate: "2026-06-14",
+        expirationDate: "2028-06-13",
+        renewalTerms: "Automatic Renewal",
+        noticePeriod: "90 Days"
+      };
+      const initialJurisdiction = {
+        law: "England & Wales",
+        seat: "London",
+        institution: "LMAA"
+      };
+      const initialPartyA = {
+        name: company.name || "GLOBAL DYNAMICS LTD",
+        role: "Seller",
+        email: company.email || "owner@global-dynamics.com",
+        address: "",
+        idNumber: "",
+        confirmEmail: false,
+        additionalEmails: []
+      };
+      const initialPartyB = {
+        name: "ARGENTO MARINE",
+        role: "Buyer",
+        email: "legal@argentomarine.com",
+        address: "",
+        idNumber: "",
+        confirmEmail: false,
+        additionalEmails: []
+      };
+      const initialContractFields = {
+        deliverables: "Provision of marine engineering, dry docking oversight, and technical operational diagnostics for the designated container fleet. Includes technical consultant site audits at all operating service locations.",
+        milestones: `Milestone 1: Preliminary Site Inspection (End of Month 1)
+Milestone 2: Critical Asset Diagnostic (Month 3)
+Milestone 3: Fleet Maintenance Deployment (Ongoing)`,
+        commercialTerms: "Base service pricing is calculated on a modular structure with optional operational hours priced according to standard Annex rates. Direct procurement materials are billed separately with a 5% handling surcharge.",
+        surcharges: "Demurrage claims and vessel waiting time caps are subject to a maximum threshold of $15,000 per 24-hour cycle.",
+        paymentTerms: "Payment is payable monthly in advance on receipt of corresponding company service invoice. Invoices must list the detailed breakdown of technical resources deployed in the field.",
+        paymentMethod: "SWIFT Wire Transfer / Confirmed Irrevocable Letter of Credit (LC)",
+        incoterms: "DDP (Delivered Duty Paid)",
+        deliveryLocation: "Piraeus Port & Limassol Terminal",
+        warrantyPeriod: "12 Months from completion",
+        warrantyScope: "Guarantee of technical operational integrity, service quality and spare parts procurement compliance with leading classification society regulations.",
+        liabilityLimit: "100% of Contract Value",
+        consequentialDamages: "Excluded by mutual waiver",
+        confidentialityDuration: "60 Months standard non-disclosure scope from agreement expiration",
+        terminationNotice: "90 Days written notice for convenience by either party.",
+        arbitrationRules: "LMAA Terms 2021 & standard Arbitrators Rules",
+        annexes: `Annex A: Vessel Fleet Allocation Matrix
+Annex B: Hourly Fee Rates and Overtime Standards`,
+        verificationCode: `VERIFY-${Math.floor(1000 + Math.random() * 9000)}`,
+        auditTrail: `1. Record Initialized: ${new Date().toISOString().replace('T', ' ').substring(0, 16)} UTC
+2. AI Risk Screened: Pending
+3. Compliance Certificate pending`
+      };
+      const initialParticipants = [
+        { id: 'p1', name: "DNV Classification Society", role: "Classification and Compliance Auditor", contact: "dnv-compliance@dnv.com" },
+        { id: 'p2', name: "Standard Chartered Settlement Router", role: "Direct Settlement & Payment Custodian", contact: "settle@sc.com" }
+      ];
+      const initialClauses = generateInitialClauses({
+        agreementType: initialFoundation.type,
+        seller: initialPartyA.name,
+        buyer: initialPartyB.name,
+        contractValue: initialFoundation.value,
+        currency: initialFoundation.currency,
+        jurisdiction: initialJurisdiction.law,
+        arbitrationSeat: initialJurisdiction.seat,
+        deliveryPort: initialContractFields.deliveryLocation,
+        broker: "XYZ Brokerage"
+      });
 
-    let sortedData = [...defaultData];
+      const contractData = {
+        userId: company.id,
+        title: initialFoundation.title,
+        agreementType: initialFoundation.type,
+        seller: initialPartyA.name,
+        buyer: initialPartyB.name,
+        contractValue: initialFoundation.value,
+        currency: initialFoundation.currency,
+        status: "draft",
+        version: "v1 Generated",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        foundation: initialFoundation,
+        jurisdiction: initialJurisdiction,
+        partyA: initialPartyA,
+        partyB: initialPartyB,
+        contractFields: initialContractFields,
+        participants: initialParticipants,
+        clauses: initialClauses
+      };
+
+      await setDoc(newDocRef, contractData);
+
+      try {
+        await logAuditEvent(company.id, `Contract Draft Created: ${initialFoundation.title}`, initialFoundation.title);
+      } catch (logErr) {
+        console.error("New contract draft log failed:", logErr);
+      }
+
+      setActiveContractId(newDocRef.id);
+      setFoundation(initialFoundation);
+      setJurisdiction(initialJurisdiction);
+      setPartyA(initialPartyA);
+      setPartyB(initialPartyB);
+      setContractFields(initialContractFields);
+      setParticipants(initialParticipants);
+      setClauses(initialClauses);
+      setIsExecuted(false);
+      setCurrentVersion("v1 Generated");
+      setWorkflowStep('editor');
+    } catch (err) {
+      console.error("Error creating new contract draft:", err);
+    }
+  };
+
+  const loadContractIntoEditor = (contract: any) => {
+    setActiveContractId(contract.id);
+    
+    if (company?.id && contract.id) {
+      logAuditEvent(company.id, `Loaded contract in editor: ${contract.title || contract.id}`, contract.title || contract.id || "Contract Editor").catch(err => {
+        console.error("Log resume draft audit failed:", err);
+      });
+    }
+    
+    if (contract.foundation) {
+      setFoundation(contract.foundation);
+    } else {
+      setFoundation({
+        type: contract.agreementType || "Service Agreement",
+        title: contract.title || "Eastern Mediterranean Technical Service Agreement",
+        value: contract.contractValue || "0",
+        currency: contract.currency || "USD",
+        transactionType: contract.transactionType || "Maintenance",
+        subjectMatter: contract.subjectMatter || "",
+        objective: contract.objective || "",
+        description: contract.description || "",
+        geoScope: contract.geoScope || "",
+        operatingArea: contract.operatingArea || "",
+        serviceLocation: contract.serviceLocation || "",
+        duration: contract.duration || "",
+        effectiveDate: contract.effectiveDate || "",
+        expirationDate: contract.expirationDate || "",
+        renewalTerms: contract.renewalTerms || "",
+        noticePeriod: contract.noticePeriod || ""
+      });
+    }
+
+    if (contract.jurisdiction) {
+      setJurisdiction(contract.jurisdiction);
+    } else {
+      setJurisdiction({
+        law: contract.applicableLaw || "English Law",
+        seat: contract.arbitrationSeat || "London",
+        institution: contract.arbitrationInstitution || "LMAA"
+      });
+    }
+
+    if (contract.partyA) {
+      setPartyA(contract.partyA);
+    } else {
+      setPartyA({
+        name: contract.seller || company?.name || "GLOBAL DYNAMICS LTD",
+        role: "Seller",
+        email: company?.email || "owner@global-dynamics.com",
+        address: "",
+        idNumber: "",
+        confirmEmail: false,
+        additionalEmails: []
+      });
+    }
+
+    if (contract.partyB) {
+      setPartyB(contract.partyB);
+    } else {
+      setPartyB({
+        name: contract.buyer || "ARGENTO MARINE",
+        role: "Buyer",
+        email: "legal@argentomarine.com",
+        address: "",
+        idNumber: "",
+        confirmEmail: false,
+        additionalEmails: []
+      });
+    }
+
+    if (contract.contractFields) {
+      setContractFields(contract.contractFields);
+    }
+
+    if (contract.participants) {
+      setParticipants(contract.participants);
+    }
+
+    if (contract.clauses) {
+      setClauses(contract.clauses);
+    } else {
+      const initialClauses = generateInitialClauses({
+        agreementType: contract.agreementType || "Service Agreement",
+        seller: contract.seller || "GLOBAL DYNAMICS LTD",
+        buyer: contract.buyer || "ARGENTO MARINE",
+        contractValue: contract.contractValue || "0",
+        currency: contract.currency || "USD",
+        jurisdiction: contract.applicableLaw || "English Law",
+        arbitrationSeat: contract.arbitrationSeat || "London",
+        deliveryPort: contract.deliveryLocation || "Piraeus Port",
+        broker: contract.broker || "XYZ Brokerage"
+      });
+      setClauses(initialClauses);
+    }
+
+    setIsExecuted(contract.status === 'executed');
+    setCurrentVersion(contract.version || 'v1 Generated');
+    setWorkflowStep('editor');
+  };
+
+  // Load contract from URL query parameters (?id=...) if present
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const contractIdFromUrl = urlParams.get('id');
+
+    if (contractIdFromUrl && contractIdFromUrl !== activeContractId && company?.id) {
+      const loadFromDb = async () => {
+        try {
+          const docRef = doc(db, 'contracts', contractIdFromUrl);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.userId === company.id) {
+              loadContractIntoEditor({ id: docSnap.id, ...data });
+              setWorkflowStep('editor');
+            } else {
+              console.error("Access denied: You do not own this contract draft.");
+              setWorkflowStep('hub');
+              window.history.pushState(null, '', '/new-contract');
+            }
+          } else {
+            console.error("Contract draft not found in Firestore registry.");
+          }
+        } catch (err) {
+          console.error("Failed to load contract from URL param:", err);
+        }
+      };
+      loadFromDb();
+    }
+  }, [activeContractId, company?.id]);
+
+  // Synchronize browser URL query parameters with active editor state
+  useEffect(() => {
+    if (workflowStep === 'hub') {
+      if (window.location.pathname === '/new-contract' && window.location.search) {
+        window.history.pushState(null, '', '/new-contract');
+      }
+      setActiveContractId(null);
+    } else if (workflowStep === 'editor' && activeContractId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('id') !== activeContractId) {
+        window.history.pushState(null, '', `/new-contract?id=${activeContractId}`);
+      }
+    }
+  }, [workflowStep, activeContractId]);
+
+  if (workflowStep === 'hub') {
+    // Filter contracts based on search queries and dropdown filters
+    const filteredData = dbContracts.filter(contract => {
+      const matchesSearch = 
+        contract.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.seller.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contract.buyer.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = !statusFilter || contract.status === statusFilter;
+      const matchesType = !typeFilter || contract.type.toLowerCase().includes(typeFilter.toLowerCase());
+
+      return matchesSearch && matchesStatus && matchesType;
+    });
+
+    let sortedData = [...filteredData];
     if (sortConfig !== null) {
       sortedData.sort((a, b) => {
-        let valA = a[sortConfig.key as keyof typeof a];
-        let valB = b[sortConfig.key as keyof typeof a];
+        let valA = a[sortConfig.key as keyof typeof a] || '';
+        let valB = b[sortConfig.key as keyof typeof a] || '';
         if (valA < valB) {
           return sortConfig.direction === 'asc' ? -1 : 1;
         }
@@ -1489,12 +1886,7 @@ ${contractFields.auditTrail}
               <p className="text-body text-[#BBC0C4] mt-1">Manage and execute your maritime legal agreements.</p>
             </div>
             <button 
-              onClick={() => {
-                setIsGenerating(false);
-                setIsExecuted(false);
-                setCurrentVersion('v1 Generated');
-                setWorkflowStep('editor');
-              }}
+              onClick={handleNewContract}
               className="bg-[#00D4FF] hover:bg-[#33DDFF] text-[#040B18] flex items-center justify-center gap-2 px-6 py-2.5 rounded shadow-sm transition-all cursor-pointer"
             >
               <Plus size={16} strokeWidth={2.5} /> <span className="text-[13px] font-semibold uppercase tracking-wider">New Contract</span>
@@ -1507,16 +1899,26 @@ ${contractFields.auditTrail}
               <input 
                 type="text" 
                 placeholder="Search by ID, Parties, or Contract Type..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full h-10 bg-[#040B18] border border-white/5 rounded px-10 text-[13px] text-[#E8EAED] placeholder:text-[#80868B] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all"
               />
             </div>
             <div className="flex items-center gap-3">
-              <select className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10">
+              <select 
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10"
+              >
                 <option value="">All Statuses</option>
                 <option value="draft">Active Draft</option>
                 <option value="executed">Executed</option>
               </select>
-              <select className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10">
+              <select 
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="h-10 bg-[#040B18] border border-white/5 rounded px-4 text-[13px] text-[#BBC0C4] focus:border-[#00D4FF] focus:ring-1 focus:ring-[#00D4FF] outline-none transition-all appearance-none cursor-pointer pr-10"
+              >
                 <option value="">All Types</option>
                 <option value="Sale">Vessel Sale</option>
                 <option value="Charter">Charter Agreement</option>
@@ -1544,45 +1946,53 @@ ${contractFields.auditTrail}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {sortedData.map((contract) => (
-                  <React.Fragment key={contract.id}>
-                    <tr onClick={() => toggleRow(contract.id)} className="hover:bg-white/5 transition-colors group cursor-pointer">
-                      <td className="py-4 px-5 text-[13px] font-medium text-[#E8EAED] flex items-center gap-2">
-                        {expandedRows.has(contract.id) ? <ChevronUp size={14} className="text-[#80868B]" /> : <ChevronDown size={14} className="text-[#80868B]" />}
-                        {contract.id}
-                      </td>
-                      <td className="py-4 px-5">
-                        <div className="font-semibold text-[#E8EAED] text-[14px]">{contract.title}</div>
-                        <div className="text-[12px] text-[#BBC0C4] mt-1">{contract.type}</div>
-                      </td>
-                      <td className="py-4 px-5 text-[13px] text-[#BBC0C4] font-medium">
-                        <span className="text-[#E8EAED]">{contract.partyA}</span> <span className="opacity-50 mx-1">v</span> <span className="text-[#E8EAED]">{contract.partyB}</span>
-                      </td>
-                      <td className="py-4 px-5 text-[13px] text-[#BBC0C4]">
-                        {contract.date}
-                      </td>
-                      <td className="py-4 px-5">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider ${contract.status === 'executed' ? "bg-green-500/10 text-[#81C995] border border-green-500/20" : "bg-yellow-500/10 text-[#FDD663] border border-yellow-500/20"}`}>
-                          {contract.status === 'executed' ? "Executed ✓" : "Active Draft"}
-                        </span>
-                      </td>
-                      <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button 
-                          onClick={() => {
-                            if (contract.status === 'executed') {
-                              setIsExecuted(true);
-                              setFoundation({ ...foundation, type: contract.type, title: contract.title, value: contract.value });
-                            } else {
-                              setIsExecuted(false);
-                            }
-                            setWorkflowStep('editor');
-                          }}
-                          className="text-[12px] font-medium text-[#00D4FF] hover:text-white transition-colors cursor-pointer"
-                        >
-                          {contract.status === 'executed' ? "View Document" : "Resume Draft"}
-                        </button>
-                      </td>
-                    </tr>
+                {loadingContracts ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      <Loader2 className="animate-spin text-[#00D4FF] mx-auto mb-2" size={24} />
+                      Loading dynamic maritime agreements...
+                    </td>
+                  </tr>
+                ) : sortedData.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      No contracts found in this workspace.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedData.map((contract) => (
+                    <React.Fragment key={contract.id}>
+                      <tr onClick={() => toggleRow(contract.id)} className="hover:bg-white/5 transition-colors group cursor-pointer">
+                        <td className="py-4 px-5 text-[13px] font-medium text-[#E8EAED] flex items-center gap-2">
+                          <span className="inline-flex">
+                            {expandedRows.has(contract.id) ? <ChevronUp key="up" size={14} className="text-[#80868B]" /> : <ChevronDown key="down" size={14} className="text-[#80868B]" />}
+                          </span>
+                          <span>{contract.id}</span>
+                        </td>
+                        <td className="py-4 px-5">
+                          <div className="font-semibold text-[#E8EAED] text-[14px]">{contract.title}</div>
+                          <div className="text-[12px] text-[#BBC0C4] mt-1">{contract.type}</div>
+                        </td>
+                        <td className="py-4 px-5 text-[13px] text-[#BBC0C4] font-medium">
+                          <span className="text-[#E8EAED]">{contract.seller}</span> <span className="opacity-50 mx-1">v</span> <span className="text-[#E8EAED]">{contract.buyer}</span>
+                        </td>
+                        <td className="py-4 px-5 text-[13px] text-[#BBC0C4]">
+                          {contract.date}
+                        </td>
+                        <td className="py-4 px-5">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-sm text-[10px] font-bold uppercase tracking-wider ${contract.status === 'executed' ? "bg-green-500/10 text-[#81C995] border border-green-500/20" : "bg-yellow-500/10 text-[#FDD663] border border-yellow-500/20"}`}>
+                            {contract.status === 'executed' ? "Executed ✓" : "Active Draft"}
+                          </span>
+                        </td>
+                        <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={() => loadContractIntoEditor(contract)}
+                            className="text-[12px] font-medium text-[#00D4FF] hover:text-white transition-colors cursor-pointer"
+                          >
+                            {contract.status === 'executed' ? "View Document" : "Resume Draft"}
+                          </button>
+                        </td>
+                      </tr>
                     {expandedRows.has(contract.id) && (
                       <tr className="bg-[#121212]/50 border-none">
                         <td colSpan={6} className="py-4 px-6 relative">
@@ -1599,10 +2009,10 @@ ${contractFields.auditTrail}
                                  <h4 className="text-[10px] uppercase tracking-widest text-[#80868B] mb-2 font-semibold">Key Entities</h4>
                                  <div className="space-y-2">
                                     <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
-                                       <div className="w-1.5 h-1.5 rounded-full bg-[#00D4FF]"></div> {contract.partyA} (Principal)
+                                       <div className="w-1.5 h-1.5 rounded-full bg-[#00D4FF]"></div> {contract.seller} (Principal)
                                     </div>
                                     <div className="flex items-center gap-2 text-[12px] text-[#BBC0C4] bg-[#2D2D2D]/30 px-3 py-2 rounded">
-                                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div> {contract.partyB} (Counterparty)
+                                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"></div> {contract.buyer} (Counterparty)
                                     </div>
                                  </div>
                               </div>
@@ -1622,7 +2032,7 @@ ${contractFields.auditTrail}
                       </tr>
                     )}
                   </React.Fragment>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>

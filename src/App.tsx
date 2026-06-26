@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth, db } from '../services/firebase-service';
+import { auth, db, logAuditEvent } from '../services/firebase-service';
 import { doc, getDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 
@@ -56,6 +56,7 @@ const App: React.FC = () => {
 
   const handleVerifyStripeSession = async (sessionId: string) => {
     setVerifyingSession(true);
+    let verifySuccess = false;
     try {
       const response = await fetch('/api/stripe/verify-session', {
         method: 'POST',
@@ -73,7 +74,7 @@ const App: React.FC = () => {
           const plans = [
             { id: 'Starter', price: 29, credits: 500 },
             { id: 'Professional', price: 99, credits: 2500 },
-            { id: 'Enterprise', price: 450, credits: 10000 }
+            { id: 'Enterprise', price: 299, credits: 10000 }
           ];
           const planInfo = plans.find(p => p.id === planId);
 
@@ -106,6 +107,13 @@ const App: React.FC = () => {
               description: `B2B ${planId} Subscription Activation`,
               downloadUrl: '#'
             });
+
+            try {
+              await logAuditEvent(currentUser.uid, `Stripe Subscription Payment Verified & Activated: ${planId} Plan`, "Billing & Subscription");
+            } catch (logErr) {
+              console.error("Payment verify log failed:", logErr);
+            }
+            verifySuccess = true;
           }
         } else if (mode === 'payment') {
           // It's a top-up
@@ -138,6 +146,13 @@ const App: React.FC = () => {
               status: "paid",
               plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
             });
+
+            try {
+              await logAuditEvent(currentUser.uid, `Stripe Quota Refill Verified: ${pack.name} (+${pack.credits} Credits)`, "Billing & Subscription");
+            } catch (logErr) {
+              console.error("Quota refill verify log failed:", logErr);
+            }
+            verifySuccess = true;
           }
         }
       }
@@ -146,7 +161,15 @@ const App: React.FC = () => {
     } finally {
       setVerifyingSession(false);
       // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+      const currentPath = window.location.pathname;
+      window.history.replaceState({}, document.title, currentPath);
+      if (verifySuccess) {
+        if (currentPath === '/') {
+          navigateTo('/dashboard');
+        } else {
+          navigateTo(currentPath as RoutePath);
+        }
+      }
     }
   };
 
@@ -173,25 +196,52 @@ const App: React.FC = () => {
 
     // Bind real-time Firebase Auth state change observer
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        
-        // If they are logged in and hit the root public page, move them to workspace.
-        // We DO NOT auto-redirect from /login or /register here, because
-        // AuthScreens handles its own post-login sequences (2FA, Verify Email) and will call navigateTo manually.
-        const currentPath = window.location.pathname;
-        if (currentPath === '/') {
-          navigateTo('/dashboard');
+      try {
+        if (user) {
+          const isRegistering = window.sessionStorage.getItem('is_registering') === 'true';
+          if (isRegistering) {
+            setCurrentUser(user);
+            return;
+          }
+
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (!userDocSnap.exists()) {
+            const { signOut } = await import('firebase/auth');
+            await signOut(auth);
+            setCurrentUser(null);
+            window.localStorage.setItem('auth_error', 'Bu hesap Firestore veri tabanında kayıtlı değil. Giriş engellendi.');
+            navigateTo('/login');
+            return;
+          }
+          
+          setCurrentUser(user);
+          
+          const currentPath = window.location.pathname;
+          const urlParams = new URLSearchParams(window.location.search);
+          const hasSessionId = urlParams.has('session_id');
+
+          if (currentPath === '/' && !hasSessionId) {
+            navigateTo('/dashboard');
+          }
+        } else {
+          setCurrentUser(null);
+          // If not logged in and requesting protected scopes, redirect to login gate
+          const currentPath = window.location.pathname;
+          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath)) {
+            navigateTo('/');
+          }
         }
-      } else {
+      } catch (err) {
+        console.error("Firestore user verification error:", err);
+        const { signOut } = await import('firebase/auth');
+        await signOut(auth);
         setCurrentUser(null);
-        // If not logged in and requesting protected scopes, redirect to login gate
-        const currentPath = window.location.pathname;
-        if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath)) {
-          navigateTo('/');
-        }
+        navigateTo('/login');
+      } finally {
+        setAppInitializing(false);
       }
-      setAppInitializing(false);
     });
 
     return () => {

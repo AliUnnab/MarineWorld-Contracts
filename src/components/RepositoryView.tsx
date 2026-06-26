@@ -42,6 +42,21 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
     return () => unsubscribe();
   }, [userId]);
 
+  const normalizeStatus = (status: string) => {
+    if (!status) return 'Draft';
+    const s = status.trim().toLowerCase();
+    if (s === 'draft') return 'Draft';
+    if (s === 'executed') return 'Executed';
+    if (s === 'review') return 'Review';
+    if (s === 'approval') return 'Approval';
+    if (s === 'pending review' || s === 'pending_review') return 'Pending Review';
+    if (s === 'verified') return 'Verified';
+    if (s === 'cancelled') return 'Cancelled';
+    if (s === 'archived') return 'Archived';
+    if (s === 'expired') return 'Expired';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
   const toggleSort = (field: 'title' | 'createdAt' | 'status') => {
     if (sortBy === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -82,14 +97,20 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
   // Filter and sort mechanics
   const filteredContracts = contracts
     .filter(c => {
+      if (c.userId !== userId) return false;
       const matchSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           c.agreementType.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchStatus = selectedStatus === 'ALL' || c.status === selectedStatus;
+      const matchStatus = selectedStatus === 'ALL' || normalizeStatus(c.status) === selectedStatus;
       return matchSearch && matchStatus;
     })
     .sort((a, b) => {
       let valA = a[sortBy] || '';
       let valB = b[sortBy] || '';
+
+      if (sortBy === 'status') {
+        valA = normalizeStatus(a.status);
+        valB = normalizeStatus(b.status);
+      }
 
       if (sortBy === 'createdAt') {
         const timeA = new Date(a.createdAt).getTime();
@@ -210,7 +231,9 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
                         className={`hover:bg-[#2B3347] cursor-pointer transition-colors ${isExpanded ? 'bg-[#2B3347]' : ''}`}
                       >
                         <td className="py-4 pl-4 text-[#BBC0C4]">
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          <span className="inline-flex">
+                            {isExpanded ? <ChevronUp key="up" size={16} /> : <ChevronDown key="down" size={16} />}
+                          </span>
                         </td>
                         <td className="py-4 pr-4 font-semibold text-white max-w-[280px] truncate">
                           {c.title}
@@ -231,8 +254,8 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
                           {c.renewalDate ? new Date(c.renewalDate).toLocaleDateString() : new Date(new Date(c.createdAt).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString()}
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusColors[c.status] || ''}`}>
-                            {c.status}
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusColors[normalizeStatus(c.status)] || ''}`}>
+                            {normalizeStatus(c.status)}
                           </span>
                         </td>
                         <td className="py-4 px-4 text-right pr-6" onClick={(e) => e.stopPropagation()}>
@@ -334,8 +357,8 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
                     <h3 className="text-[13px] font-bold text-white uppercase tracking-tight leading-tight">{c.title}</h3>
                     <p className="text-[10px] text-[#80868B] font-mono">Version {c.version || 'v1.0'} • {new Date(c.createdAt).toLocaleDateString()}</p>
                   </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${statusColors[c.status] || ''}`}>
-                    {c.status}
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${statusColors[normalizeStatus(c.status)] || ''}`}>
+                    {normalizeStatus(c.status)}
                   </span>
                 </div>
 

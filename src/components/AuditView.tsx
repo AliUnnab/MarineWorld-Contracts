@@ -24,45 +24,25 @@ export default function AuditView({ userId }: AuditViewProps) {
     const unsubscribe = onSnapshot(qLogs, (snap) => {
       const records: AuditLogEvent[] = [];
       snap.forEach((docSnap) => {
-        records.push({ id: docSnap.id, ...docSnap.data() } as AuditLogEvent);
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+        }
       });
       
-      let logsToSet = records;
-      if (records.length === 0) {
-        // Generate 15 realistic sample logs for v1.1 enhancement
-        const sampleLogs: AuditLogEvent[] = [
-          { id: '1', userId, actorName: 'System Identity Gate', actorEmail: 'system@marineworld.org', action: 'Template Deployed: Global Vessel Charter v4', targetDocument: 'Infrastructure Core', ipAddress: '192.168.1.1', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
-          { id: '2', userId, actorName: 'Executive Admin', actorEmail: 'admin@marineworld.org', action: 'Contract Executed: B-144 VLCC Charter', targetDocument: 'B-144 VLCC Charter', ipAddress: '128.91.44.12', timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString() },
-          { id: '3', userId, actorName: 'Compliance Bot', actorEmail: 'compliance@marineworld.org', action: 'Signature Verified: Digital Hash Match', targetDocument: 'B-144 VLCC Charter', ipAddress: 'Local Cluster', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
-          { id: '4', userId, actorName: 'Legal Counsel', actorEmail: 'counsel@partner.com', action: 'Approval Granted: Risk Review Passed', targetDocument: 'M/V Star Logistics Master Agreement', ipAddress: '14.22.91.4', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() },
-          { id: '5', userId, actorName: 'Executive Admin', actorEmail: 'admin@marineworld.org', action: 'PDF Generated: Export to PDF/A-3', targetDocument: 'M/V Star Logistics Master Agreement', ipAddress: '128.91.44.12', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString() },
-          { id: '6', userId, actorName: 'System Scheduler', actorEmail: 'cron@marineworld.org', action: 'Renewal Reminder Triggered: 90 Day Alert', targetDocument: 'Oceanic Fuels Supply 2025', ipAddress: 'Internal', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
-          { id: '7', userId, actorName: 'Finance Admin', actorEmail: 'finance@marineworld.org', action: 'Contract Submitted For Review', targetDocument: 'M/V Star Logistics Master Agreement', ipAddress: '172.16.0.44', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString() },
-          { id: '8', userId, actorName: 'Legal Counsel', actorEmail: 'counsel@partner.com', action: 'Clause Modified: Indemnity Section 4.2', targetDocument: 'M/V Star Logistics Master Agreement', ipAddress: '14.22.91.4', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString() },
-          { id: '9', userId, actorName: 'Executive Admin', actorEmail: 'admin@marineworld.org', action: 'User Invited: External Counsel Seat', targetDocument: 'Workspace Directory Security', ipAddress: '128.91.44.12', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString() },
-          { id: '10', userId, actorName: 'System Identity Gate', actorEmail: 'system@marineworld.org', action: 'Contract Draft Created: Oceanic Fuels Supply 2025', targetDocument: 'Oceanic Fuels Supply 2025', ipAddress: '192.168.1.1', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString() },
-          { id: '11', userId, actorName: 'Compliance Bot', actorEmail: 'compliance@marineworld.org', action: 'Risk Score Updated: High -> Medium', targetDocument: 'Vessel Maintenance Service Agreement', ipAddress: 'Local Cluster', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString() },
-          { id: '12', userId, actorName: 'System Scheduler', actorEmail: 'cron@marineworld.org', action: 'Renewal Reminder Triggered: 30 Day Alert', targetDocument: 'B-144 VLCC Charter (Legacy)', ipAddress: 'Internal', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 120).toISOString() },
-          { id: '13', userId, actorName: 'Executive', actorEmail: 'ceo@partner.com', action: 'Signature Verified: biometric check', targetDocument: 'Shareholder Resolution 2024', ipAddress: '202.11.4.5', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 150).toISOString() },
-          { id: '14', userId, actorName: 'System Identity Gate', actorEmail: 'system@marineworld.org', action: 'User Invited: Finance Admin', targetDocument: 'Workspace Directory Security', ipAddress: '192.168.1.1', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 200).toISOString() },
-          { id: '15', userId, actorName: 'Legal Counsel', actorEmail: 'counsel@partner.com', action: 'Contract Draft Created: M/V Star Logistics Master Agreement', targetDocument: 'M/V Star Logistics Master Agreement', ipAddress: '14.22.91.4', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 300).toISOString() },
-        ];
-        logsToSet = sampleLogs;
-      } else {
-        // Sort newest first
-        logsToSet.sort((a,b) => {
-          const parseTime = (d: any) => {
-            if (!d) return 0;
-            if (typeof d === 'string') return new Date(d).getTime();
-            if (d.toMillis) return d.toMillis();
-            if (d.seconds) return d.seconds * 1000;
-            return 0;
-          };
-          return parseTime(b.timestamp) - parseTime(a.timestamp);
-        });
-      }
+      // Sort newest first
+      records.sort((a, b) => {
+        const parseTime = (d: any) => {
+          if (!d) return 0;
+          if (typeof d === 'string') return new Date(d).getTime();
+          if (d.toMillis) return d.toMillis();
+          if (d.seconds) return d.seconds * 1000;
+          return 0;
+        };
+        return parseTime(b.timestamp) - parseTime(a.timestamp);
+      });
 
-      setLogs(logsToSet);
+      setLogs(records);
       setLoading(false);
     }, (err) => {
       console.error("Firestore loading audit logs failed, fallback query direct:", err);
@@ -70,9 +50,12 @@ export default function AuditView({ userId }: AuditViewProps) {
       getDocs(qLogs).then((snap) => {
         const records: AuditLogEvent[] = [];
         snap.forEach((docSnap) => {
-          records.push({ id: docSnap.id, ...docSnap.data() } as AuditLogEvent);
+          const data = docSnap.data();
+          if (data.userId === userId) {
+            records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+          }
         });
-        records.sort((a,b) => {
+        records.sort((a, b) => {
           const parseTime = (d: any) => {
             if (!d) return 0;
             if (typeof d === 'string') return new Date(d).getTime();

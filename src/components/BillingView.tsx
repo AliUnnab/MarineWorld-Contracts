@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../services/firebase-service';
+import { db, logAuditEvent } from '../../services/firebase-service';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { 
   CreditCard, FileText, Download, CheckCircle, AlertTriangle, 
@@ -33,7 +33,10 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
     const unsubscribe = onSnapshot(qInvoices, (snap) => {
       const records: SaaSInvoice[] = [];
       snap.forEach((docSnap) => {
-        records.push({ id: docSnap.id, ...docSnap.data() } as SaaSInvoice);
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          records.push({ id: docSnap.id, ...data } as SaaSInvoice);
+        }
       });
       // Sort newest invoice first
       records.sort((a, b) => {
@@ -68,6 +71,7 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
         updatedAt: new Date().toISOString()
       }, { merge: true });
       console.log("Billing primary corporate card successfully tokenized via Stripe secure vaults.");
+      await logAuditEvent(userId, `Updated and tokenized primary billing payment card reference ending in ${cardNumber.slice(-4)}`, "Billing & Ledgers");
       setEditingCard(false);
     } catch (err) {
       console.error("Failed to update wallet card profile:", err);
@@ -76,9 +80,10 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
     }
   };
 
-  const handleDownloadInvoice = (invoice: SaaSInvoice) => {
+  const handleDownloadInvoice = async (invoice: SaaSInvoice) => {
     // Generate simple client-side printout/alert for mock invoice PDF bypass
     console.log("Mock invoice PDF generation bypass triggered. Simulated transaction receipt downloaded.");
+    await logAuditEvent(userId, `Simulated download of invoice receipt ${invoice.invoiceNumber} for amount ${invoice.amount}`, "Billing & Ledgers");
   };
 
   return (
@@ -150,7 +155,7 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
                     type="submit"
                     className="flex-1 py-2 bg-[#00D68F] hover:bg-[#33E0A3] text-[#171B26] text-[10px] font-bold uppercase rounded flex items-center justify-center gap-1 transition-all"
                   >
-                    {updatingCard ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Tokenize Securely
+                    {updatingCard ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} <span>Tokenize Securely</span>
                   </button>
                   <button 
                     type="button" 

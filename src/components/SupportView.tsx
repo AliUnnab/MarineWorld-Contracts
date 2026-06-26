@@ -31,7 +31,10 @@ export default function SupportView({ userId }: SupportViewProps) {
     const unsubscribe = onSnapshot(qTickets, (snap) => {
       const records: SupportTicket[] = [];
       snap.forEach((docSnap) => {
-        records.push({ id: docSnap.id, ...docSnap.data() } as SupportTicket);
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          records.push({ id: docSnap.id, ...data } as SupportTicket);
+        }
       });
       // Sort oldest first or newest first
       records.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
@@ -219,7 +222,7 @@ export default function SupportView({ userId }: SupportViewProps) {
                   type="submit"
                   className="px-6 py-2.5 bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-[10px] font-bold rounded transition-all uppercase flex items-center gap-2 shadow-md tracking-widest disabled:opacity-50"
                 >
-                  {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Dispatch Ticket
+                  {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} <span>Dispatch Ticket</span>
                 </button>
               </div>
             </form>

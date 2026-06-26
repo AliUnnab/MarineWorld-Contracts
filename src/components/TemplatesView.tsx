@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../services/firebase-service';
+import { db, logAuditEvent } from '../../services/firebase-service';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { 
   FileText, Copy, ArrowRight, CornerDownRight, Scale, 
@@ -22,7 +22,7 @@ interface TemplateItem {
 interface TemplatesViewProps {
   userId: string;
   companyName: string;
-  onDeployTemplate: (agreementType: string) => void;
+  onDeployTemplate: (agreementType: string, contractId?: string) => void;
 }
 
 export default function TemplatesView({ userId, companyName, onDeployTemplate }: TemplatesViewProps) {
@@ -108,8 +108,14 @@ export default function TemplatesView({ userId, companyName, onDeployTemplate }:
 
       const docRef = await addDoc(collection(db, 'contracts'), newContractRecord);
       
+      try {
+        await logAuditEvent(userId, `Deployed template blueprint: ${template.title}`, template.title);
+      } catch (logErr) {
+        console.error("Template deploy log failed:", logErr);
+      }
+      
       // Navigate straight into the editor with the new contract template
-      onDeployTemplate(template.agreementType);
+      onDeployTemplate(template.agreementType, docRef.id);
     } catch (err) {
       console.error("Failed to duplicate template to contracts store:", err);
     } finally {
@@ -205,13 +211,13 @@ export default function TemplatesView({ userId, companyName, onDeployTemplate }:
                   className="flex items-center gap-1 text-[11px] font-bold text-[#00D4FF] hover:text-[#33DDFF] py-1 px-1.5 hover:bg-[#00D4FF]/5 rounded transition-all uppercase tracking-wider"
                 >
                   {deployingId === temp.id ? (
-                    <>
+                    <span className="flex items-center gap-1 justify-center">
                       <Loader2 size={12} className="animate-spin" /> Deploying...
-                    </>
+                    </span>
                   ) : (
-                    <>
+                    <span className="flex items-center gap-1 justify-center">
                       Deploy Template <ArrowRight size={12} />
-                    </>
+                    </span>
                   )}
                 </button>
               </div>

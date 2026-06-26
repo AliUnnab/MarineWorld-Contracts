@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../services/firebase-service';
+import { db, logAuditEvent } from '../../services/firebase-service';
 import { 
   collection, 
   query, 
@@ -40,7 +40,10 @@ export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps)
     const unsubscribe = onSnapshot(qMembers, (snap) => {
       const records: WorkspaceMember[] = [];
       snap.forEach((docSnap) => {
-        records.push({ id: docSnap.id, ...docSnap.data() } as WorkspaceMember);
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          records.push({ id: docSnap.id, ...data } as WorkspaceMember);
+        }
       });
       setMembers(records);
       setLoading(false);
@@ -69,16 +72,7 @@ export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps)
       });
 
       // Log to audit log
-      const logRef = collection(db, 'audit_logs');
-      await addDoc(logRef, {
-        userId: userId,
-        actorName: "System Identity Gate",
-        actorEmail: userEmail,
-        action: `Workspace Teammate Invitation Sent to ${inviteEmail} as ${inviteRole}`,
-        targetDocument: "Workspace Directory Security",
-        ipAddress: "128.91.44.11",
-        timestamp: new Date().toISOString()
-      });
+      await logAuditEvent(userId, `Workspace Teammate Invitation Sent to ${inviteEmail} as ${inviteRole}`, "Workspace Directory Security");
 
       // Reset and close
       setInviteName('');
@@ -103,16 +97,7 @@ export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps)
       await deleteDoc(doc(db, 'workspace_members', memberId));
       
       // Log to audit log
-      const logRef = collection(db, 'audit_logs');
-      await addDoc(logRef, {
-        userId: userId,
-        actorName: "System Identity Gate",
-        actorEmail: userEmail,
-        action: `Revoked Workspace access keys for teammate ${email}`,
-        targetDocument: "Workspace Directory Security",
-        ipAddress: "128.91.44.11",
-        timestamp: new Date().toISOString()
-      });
+      await logAuditEvent(userId, `Revoked Workspace access keys for teammate ${email}`, "Workspace Directory Security");
     } catch (err) {
       console.error("Audit deletion teammate error:", err);
     }
@@ -127,6 +112,7 @@ export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps)
       await updateDoc(doc(db, 'workspace_members', memberId), {
         role: newRole
       });
+      await logAuditEvent(userId, `Updated teammate role for ${email} to ${newRole}`, "Workspace Directory Security");
     } catch (err) {
       console.error("Teammate role update failed:", err);
     }
@@ -343,7 +329,8 @@ export default function WorkspaceView({ userId, userEmail }: WorkspaceViewProps)
                   type="submit"
                   className="px-4 py-2 bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-[10px] font-bold rounded transition-all uppercase flex items-center justify-center gap-1 tracking-wider"
                 >
-                  {submittingInvite && <Loader2 size={12} className="animate-spin" />} Dispatch invitation
+                  {submittingInvite && <Loader2 size={12} className="animate-spin" />}
+                  <span>Dispatch invitation</span>
                 </button>
               </div>
             </form>

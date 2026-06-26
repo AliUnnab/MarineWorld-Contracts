@@ -176,7 +176,7 @@ export default function SubscriptionView({ userId }: SubscriptionViewProps) {
         <div className="grid grid-cols-2 gap-4 border-l border-[#2B3347] pl-6">
           <div>
             <span className="text-[9px] text-[#80868B] block uppercase font-bold font-mono">Monthly Subscription</span>
-            <span className="text-base font-bold text-white font-mono">${subscription?.amount}.00 / mo</span>
+            <span className="text-base font-bold text-white font-mono">${subscription?.amount ?? 0}.00 / mo</span>
           </div>
           <div>
             <span className="text-[9px] text-[#80868B] block uppercase font-bold font-mono">Renewal Date</span>
@@ -241,13 +241,13 @@ export default function SubscriptionView({ userId }: SubscriptionViewProps) {
                   }`}
                 >
                   {updatingId === plan.id ? (
-                    <>
+                    <span className="flex items-center gap-1.5 justify-center">
                       <Loader2 size={12} className="animate-spin" /> Approving via Stripe...
-                    </>
+                    </span>
                   ) : isActive ? (
-                    "Current Subscription"
+                    <span>Current Subscription</span>
                   ) : (
-                    "Select Plan"
+                    <span>Select Plan</span>
                   )}
                 </button>
               </div>

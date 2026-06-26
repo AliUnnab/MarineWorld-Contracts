@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../services/firebase-service';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { db, logAuditEvent } from '../../services/firebase-service';
+import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, deleteDoc, setDoc, addDoc, getDoc } from 'firebase/firestore';
 import { 
   User, Briefcase, Mail, KeyRound, ShieldAlert, Check, 
   Save, Loader2, Bell, ShieldOff, ToggleLeft, ToggleRight 
@@ -15,6 +15,127 @@ export default function SettingsView({ userId }: SettingsViewProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const handleResetWorkspaceData = async () => {
+    if (!window.confirm("WARNING: This will permanently delete all your contracts, credit transactions, invoices, support tickets, and workspace teammates (except yourself as Owner). This action cannot be undone. Do you wish to proceed?")) {
+      return;
+    }
+    setResetting(true);
+    try {
+      // 1. Delete contracts
+      const contractsQuery = query(collection(db, 'contracts'), where('userId', '==', userId));
+      const contractsSnap = await getDocs(contractsQuery);
+      for (const d of contractsSnap.docs) {
+        await deleteDoc(doc(db, 'contracts', d.id));
+      }
+
+      // 2. Delete credit transactions
+      const txQuery = query(collection(db, 'credit_transactions'), where('userId', '==', userId));
+      const txSnap = await getDocs(txQuery);
+      for (const d of txSnap.docs) {
+        await deleteDoc(doc(db, 'credit_transactions', d.id));
+      }
+
+      // 3. Delete invoices
+      const invoicesQuery = query(collection(db, 'invoices'), where('userId', '==', userId));
+      const invoicesSnap = await getDocs(invoicesQuery);
+      for (const d of invoicesSnap.docs) {
+        await deleteDoc(doc(db, 'invoices', d.id));
+      }
+
+      // 4. Delete support tickets
+      const supportQuery = query(collection(db, 'support_tickets'), where('userId', '==', userId));
+      const supportSnap = await getDocs(supportQuery);
+      for (const d of supportSnap.docs) {
+        await deleteDoc(doc(db, 'support_tickets', d.id));
+      }
+
+      // 5. Delete workspace members (except the Owner themselves)
+      const membersQuery = query(collection(db, 'workspace_members'), where('userId', '==', userId));
+      const membersSnap = await getDocs(membersQuery);
+      for (const d of membersSnap.docs) {
+        const memberData = d.data();
+        if (memberData.role !== 'Owner') {
+          await deleteDoc(doc(db, 'workspace_members', d.id));
+        }
+      }
+
+      // 6. Delete audit logs
+      const logsQuery = query(collection(db, 'audit_logs'), where('userId', '==', userId));
+      const logsSnap = await getDocs(logsQuery);
+      for (const d of logsSnap.docs) {
+        await deleteDoc(doc(db, 'audit_logs', d.id));
+      }
+
+      // 7. Write clean workspace initialized audit log
+      await addDoc(collection(db, 'audit_logs'), {
+        userId,
+        actorName: profile?.displayName || "System",
+        actorEmail: profile?.email || "",
+        action: "Workspace reset to clean slate by user",
+        targetDocument: "System Root",
+        ipAddress: "127.0.0.1",
+        timestamp: new Date().toISOString()
+      });
+
+      // 8. Reset credit wallet to default starting credits for their subscription plan
+      const subSnap = await getDoc(doc(db, 'subscriptions', userId));
+      let planCredits = 0;
+      if (subSnap.exists()) {
+        const subData = subSnap.data();
+        if (subData.plan === 'Starter') planCredits = 500;
+        else if (subData.plan === 'Professional') planCredits = 2500;
+        else if (subData.plan === 'Enterprise') planCredits = 10000;
+      }
+      
+      await setDoc(doc(db, 'credit_wallets', userId), {
+        id: userId,
+        userId: userId,
+        creditsTotal: planCredits,
+        creditsRemaining: planCredits,
+        creditsUsed: 0,
+        autoRecharge: false,
+        rechargeThreshold: 200,
+        rechargeAmount: 500
+      }, { merge: true });
+
+      // Recreate invoice and transaction starting grant
+      if (planCredits > 0 && subSnap.exists()) {
+        const subData = subSnap.data();
+        await addDoc(collection(db, 'invoices'), {
+          userId: userId,
+          invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
+          amount: `$${subData.amount ?? 0}.00`,
+          status: 'paid',
+          date: new Date().toISOString(),
+          plan: `${subData.plan} Plan Subscription`,
+          description: `B2B ${subData.plan} Subscription Activation`,
+          downloadUrl: '#'
+        });
+
+        await addDoc(collection(db, 'credit_transactions'), {
+          userId: userId,
+          date: new Date().toISOString().split('T')[0],
+          packet: `${subData.plan} Subscription Starting Grant`,
+          changeCredits: planCredits,
+          price: `$${subData.amount ?? 0}.00`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      setResetSuccess(true);
+      console.log("Workspace database reset completed successfully.");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to reset workspace database:", err);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Form states
   const [name, setName] = useState('');
@@ -52,6 +173,7 @@ export default function SettingsView({ userId }: SettingsViewProps) {
         companyName: company
       });
       console.log("Corporate identity settings updated in secure Firestore registries.");
+      await logAuditEvent(userId, `Updated corporate identity profile details: Name: ${name}, Company: ${company}`, "Tenant Configuration Console");
     } catch (err) {
       console.error("Failed to commit profile updates:", err);
     } finally {
@@ -61,11 +183,13 @@ export default function SettingsView({ userId }: SettingsViewProps) {
 
   const handleToggle2FA = async () => {
     if (!profile) return;
+    const nextState = !profile.twoFactorEnabled;
     try {
       const profileRef = doc(db, 'users', userId);
       await updateDoc(profileRef, {
-        twoFactorEnabled: !profile.twoFactorEnabled
+        twoFactorEnabled: nextState
       });
+      await logAuditEvent(userId, `${nextState ? "Enabled" : "Disabled"} multi-factor (MFA) signature electronic sealing requirements`, "Tenant Configuration Console");
     } catch (err) {
       console.error("MFA toggle commit failed:", err);
     }
@@ -261,6 +385,36 @@ export default function SettingsView({ userId }: SettingsViewProps) {
               <span>All signatures are cryptographically hashed and anchored to the Global MarineWorld Sovereign Ledger.</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* SECTION 5: SANDBOX SLATE OPERATIONS */}
+      <div className="mt-8 bg-red-500/5 border border-red-500/10 rounded-xl p-6 max-w-5xl">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <h4 className="text-sm font-bold text-[#F28B82] uppercase tracking-tight">Danger Zone: Reset Workspace Database</h4>
+            <p className="text-[11px] text-[#BBC0C4] mt-1 leading-relaxed font-mono uppercase tracking-tighter">
+              Permanently delete all mock contracts, teammates, invoices, support tickets, and audit history logs. 
+              This will return your workspace to a clean slate, seeding only your active subscription plan and wallet credits.
+            </p>
+          </div>
+          <button
+            onClick={handleResetWorkspaceData}
+            disabled={resetting}
+            className="w-full md:w-auto px-5 py-3 rounded bg-[#F28B82] hover:bg-[#F28B82]/80 text-[#171B26] text-xs font-bold uppercase transition-all whitespace-nowrap tracking-wider disabled:opacity-50"
+          >
+            {resetting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin" /> Wiping Data...
+              </span>
+            ) : resetSuccess ? (
+              <span className="flex items-center gap-2">
+                <Check size={14} /> Workspace Reset!
+              </span>
+            ) : (
+              <span>Reset to Clean Slate</span>
+            )}
+          </button>
         </div>
       </div>
     </div>

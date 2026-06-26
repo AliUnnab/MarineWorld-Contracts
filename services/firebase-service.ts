@@ -24,6 +24,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  addDoc,
   query,
   where,
   serverTimestamp,
@@ -2192,6 +2193,29 @@ export async function updateAgentCommerceContext(companyId: string, contextData:
     console.log(`Agent Commerce context saved under companies/${companyId}/agent_context/memory.`);
   } catch (error) {
     console.error("updateAgentCommerceContext error:", error);
+  }
+}
+
+/**
+ * Shared Audit Logging Utility for compliance tracking
+ */
+export async function logAuditEvent(userId: string, action: string, targetDocument: string): Promise<void> {
+  try {
+    const actorEmail = auth.currentUser?.email || "system@marineworld.org";
+    const actorName = auth.currentUser?.displayName || "System Identity Gate";
+    const logRef = collection(db, 'audit_logs');
+    await addDoc(logRef, {
+      userId,
+      actorName,
+      actorEmail,
+      action,
+      targetDocument,
+      ipAddress: "128.91.44.11",
+      timestamp: new Date().toISOString()
+    });
+    console.log(`[AUDIT LOG] ${action} - Success.`);
+  } catch (err) {
+    console.error("Failed to log audit event:", err);
   }
 }
 

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -34,7 +35,7 @@ app.get("/api/stripe/status", async (req, res) => {
 // A dummy customer/subscription fetch until Firebase logic pairs a user to a true Customer ID
 app.get("/api/stripe/customer/:customerId", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
     const customer = await stripe.customers.retrieve(req.params.customerId);
     res.json({ customer });
@@ -45,7 +46,7 @@ app.get("/api/stripe/customer/:customerId", async (req, res) => {
 
 app.get("/api/stripe/subscriptions/:customerId", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
     const subscriptions = await stripe.subscriptions.list({ customer: req.params.customerId });
     res.json({ subscriptions: subscriptions.data });
@@ -56,7 +57,7 @@ app.get("/api/stripe/subscriptions/:customerId", async (req, res) => {
 
 app.get("/api/stripe/invoices/:customerId", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
     const invoices = await stripe.invoices.list({ customer: req.params.customerId, limit: 10 });
     res.json({ invoices: invoices.data });
@@ -67,7 +68,7 @@ app.get("/api/stripe/invoices/:customerId", async (req, res) => {
 
 app.get("/api/stripe/payment-methods/:customerId", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
     const paymentMethods = await stripe.paymentMethods.list({ customer: req.params.customerId });
     res.json({ paymentMethods: paymentMethods.data });
@@ -78,10 +79,11 @@ app.get("/api/stripe/payment-methods/:customerId", async (req, res) => {
 
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
-    const { planId, priceAmount, userId, customerEmail, mode = 'subscription' } = req.body;
-    
+    const { planId, priceAmount, userId, customerEmail, mode = 'subscription', successPath = '/' } = req.body;
+    const cleanPath = successPath.startsWith('/') ? successPath : `/${successPath}`;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: mode as any,
@@ -103,10 +105,10 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         mode
       },
       customer_email: customerEmail,
-      success_url: `${req.headers.origin}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.origin}`,
+      success_url: `${req.headers.origin}${cleanPath}?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.headers.origin}${cleanPath}`,
     });
-    
+
     res.json({ url: session.url });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -115,11 +117,11 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 
 app.post("/api/stripe/verify-session", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-  
+
   try {
     const { sessionId } = req.body;
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    
+
     if (session.payment_status === 'paid') {
       res.json({ success: true, metadata: session.metadata });
     } else {

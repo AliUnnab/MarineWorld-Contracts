@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { auth, db } from '../../services/firebase-service';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db, logAuditEvent } from '../../services/firebase-service';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { 
   Anchor, LayoutDashboard, FolderKanban, FileType, 
   Wallet, Award, CreditCard, Users, ShieldAlert, Logs, 
@@ -9,7 +9,7 @@ import {
   CheckSquare, Workflow
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile, SaasSubscription } from '../types/saas';
+import { UserProfile, SaasSubscription, CreditWallet } from '../types/saas';
 
 // Import newly created sub-views
 import DashboardView from './DashboardView';
@@ -60,6 +60,7 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
   }, [initialTab]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [subscription, setSubscription] = useState<SaasSubscription | null>(null);
+  const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,14 +88,63 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
        setLoading(false);
     });
 
+    // Listen to wallet state to synchronize remaining credits
+    const walletRef = doc(db, 'credit_wallets', user.uid);
+    const unsubscribeWallet = onSnapshot(walletRef, (snap) => {
+      if (snap.exists()) {
+        setWallet(snap.data() as CreditWallet);
+      }
+    }, (err) => {
+      console.error("Wallet listen failed in layout:", err);
+    });
+
     return () => {
       unsubscribeProfile();
       unsubscribeSub();
+      unsubscribeWallet();
     };
   }, [user]);
 
+  // Self-healing wallet credits synchronization
+  useEffect(() => {
+    if (!user?.uid || !subscription || loading) return;
+
+    // If user subscription is active but wallet is empty (creditsTotal === 0 && creditsUsed === 0)
+    // or wallet doesn't exist, provision default plan credits to credit_wallets.
+    const isWalletEmpty = !wallet || (wallet.creditsTotal === 0 && wallet.creditsUsed === 0);
+    const hasActiveSubscription = subscription.status === 'active' && subscription.plan !== 'None';
+
+    if (hasActiveSubscription && isWalletEmpty) {
+      const plans = [
+        { id: 'Starter', credits: 500 },
+        { id: 'Professional', credits: 2500 },
+        { id: 'Enterprise', credits: 10000 }
+      ];
+      const planInfo = plans.find(p => p.id === subscription.plan);
+      if (planInfo) {
+        console.log(`[Self-Healing Wallet] Provisioning default ${planInfo.credits} credits for ${subscription.plan} plan.`);
+        const walletRef = doc(db, 'credit_wallets', user.uid);
+        setDoc(walletRef, {
+          id: user.uid,
+          userId: user.uid,
+          creditsTotal: planInfo.credits,
+          creditsRemaining: planInfo.credits,
+          creditsUsed: 0,
+          autoRecharge: false,
+          rechargeThreshold: 200,
+          rechargeAmount: 500
+        }, { merge: true }).catch(err => {
+          console.error("[Self-Healing Wallet] Update failed:", err);
+        });
+      }
+    }
+  }, [user?.uid, subscription, wallet, loading]);
+
   const handleSignOut = async () => {
     try {
+      if (user?.uid) {
+        await logAuditEvent(user.uid, "User signed out and terminated active session", "User Session Profile");
+      }
       await signOut(auth);
     } catch (err) {
       console.error("Firebase Signout failed:", err);
@@ -132,10 +182,15 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
     );
   }
 
-  // Intercept the UI if the user registered but has not selected/paid for a package yet.
+  // Intercept the UI if the user registered but has not selected/paid for a package yet, or if their subscription has expired.
   // We allow access to Billing and Subscription tabs so they can fix their account.
   const isAccountTab = activeTab === 'Billing Center' || activeTab === 'Subscription Center';
-  if ((subscription?.status === 'pending_payment' || subscription?.plan === 'None' || !subscription) && !isAccountTab) {
+  
+  const isExpired = subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd) < new Date() : false;
+  const hasNoPlan = subscription?.plan === 'None' || !subscription;
+  const isPending = subscription?.status === 'pending_payment';
+
+  if ((hasNoPlan || isExpired || isPending) && !isAccountTab) {
     return <OnboardingPricing userId={user.uid} onPaymentSuccess={() => setActiveTab('Dashboard')} onLogout={onLogout} />;
   }
 
@@ -349,7 +404,7 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
             <div className="hidden lg:flex items-center gap-4 bg-[#202636] px-3 py-1.5 rounded border border-white/5">
               <div className="flex flex-col items-end">
                 <span className="text-[8px] font-bold text-[#80868B] uppercase leading-none">Operational Capacity</span>
-                <span className="text-xs font-mono font-bold text-[#00D68F] mt-1">{subscription?.creditsAllocated || 0} Credits</span>
+                 <span className="text-xs font-mono font-bold text-[#00D68F] mt-1">{wallet?.creditsRemaining ?? subscription?.creditsAllocated ?? 0} Credits</span>
               </div>
               <div className="w-px h-6 bg-[#2B3347]"></div>
               <div className="flex flex-col">
@@ -398,7 +453,7 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
                 userId={user.uid} 
                 onOpenContract={(contract) => {
                   setActiveTab('New Contract');
-                  onNavigate('/new-contract');
+                  onNavigate(`/new-contract?id=${contract.id}`);
                 }} 
                 onNavigateTab={(tab) => {
                   setActiveTab(tab);
@@ -412,9 +467,14 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
               <TemplatesView 
                 userId={user.uid} 
                 companyName={companyDisplayName}
-                onDeployTemplate={(agreementType) => {
-                  setActiveTab('Contract Repository');
-                  onNavigate('/repository');
+                onDeployTemplate={(agreementType, contractId) => {
+                  if (contractId) {
+                    setActiveTab('New Contract');
+                    onNavigate(`/new-contract?id=${contractId}`);
+                  } else {
+                    setActiveTab('Contract Repository');
+                    onNavigate('/repository');
+                  }
                 }}
               />
             )}

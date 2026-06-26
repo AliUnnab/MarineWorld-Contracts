@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, db } from '../../services/firebase-service';
+import { auth, db, logAuditEvent } from '../../services/firebase-service';
 import { 
   doc, 
   onSnapshot, 
@@ -54,7 +54,10 @@ export default function WalletView({ userId }: WalletViewProps) {
     const unsubTx = onSnapshot(txQuery, (snap) => {
       const list: CreditTransaction[] = [];
       snap.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as CreditTransaction);
+        const data = docSnap.data();
+        if (data.userId === userId) {
+          list.push({ id: docSnap.id, ...data } as CreditTransaction);
+        }
       });
       // Sort client-side of descending timestamps (to prevent query failures if index isn't build yet)
       list.sort((a, b) => {
@@ -87,7 +90,8 @@ export default function WalletView({ userId }: WalletViewProps) {
           priceAmount: pack.price,
           userId: userId,
           customerEmail: auth.currentUser?.email || '',
-          mode: 'payment'
+          mode: 'payment',
+          successPath: '/wallet'
         })
       });
       
@@ -101,6 +105,34 @@ export default function WalletView({ userId }: WalletViewProps) {
       console.error("Credit Purchase redirect failed:", err);
       // Fallback for sandbox
       console.warn("Falling back to local provisioning since Stripe setup failed.");
+      try {
+        const walletRef = doc(db, 'credit_wallets', userId);
+        await updateDoc(walletRef, {
+          creditsTotal: increment(pack.credits),
+          creditsRemaining: increment(pack.credits)
+        });
+
+        await addDoc(collection(db, 'credit_transactions'), {
+          userId: userId,
+          date: new Date().toISOString().split('T')[0],
+          packet: `Local Refill (No Stripe): ${pack.name}`,
+          changeCredits: pack.credits,
+          price: pack.price,
+          timestamp: new Date().toISOString()
+        });
+
+        await addDoc(collection(db, 'invoices'), {
+          userId: userId,
+          date: new Date().toISOString().split('T')[0],
+          amount: pack.price,
+          status: "paid",
+          plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
+        });
+
+        await logAuditEvent(userId, `Local Quota Refill: ${pack.name} (+${pack.credits} Credits)`, "Billing & Subscription");
+      } catch (fallbackErr) {
+        console.error("Local provisioning fallback failed:", fallbackErr);
+      }
       setTimeout(() => {
         setPurchasingId(null);
       }, 1000);
@@ -109,11 +141,13 @@ export default function WalletView({ userId }: WalletViewProps) {
 
   const handleToggleAutoRecharge = async () => {
     if (!wallet) return;
+    const nextState = !wallet.autoRecharge;
     try {
       const walletRef = doc(db, 'credit_wallets', userId);
       await updateDoc(walletRef, {
-        autoRecharge: !wallet.autoRecharge
+        autoRecharge: nextState
       });
+      await logAuditEvent(userId, `${nextState ? "Enabled" : "Disabled"} automated credit recharge rules`, "Credit Wallet Center");
     } catch (err) {
       console.error("Toggle Auto Recharge error:", err);
     }
@@ -154,16 +188,16 @@ export default function WalletView({ userId }: WalletViewProps) {
             </span>
             <div className="mt-6">
               <p className="text-[10px] text-[#80868B] uppercase font-mono tracking-wider font-semibold">Operational Credits Remaining</p>
-              <h3 className="text-5xl font-manrope font-extrabold text-white tracking-tight mt-1">{wallet?.creditsRemaining}</h3>
+              <h3 className="text-5xl font-manrope font-extrabold text-white tracking-tight mt-1">{wallet?.creditsRemaining ?? 0}</h3>
             </div>
             <div className="mt-4 pt-4 border-t border-[#2B3347] space-y-2">
               <div className="flex justify-between text-[11px] text-[#BBC0C4] font-mono tracking-tight">
                 <span className="uppercase">Total Capacity:</span>
-                <span className="font-bold text-white">{wallet?.creditsTotal}</span>
+                <span className="font-bold text-white">{wallet?.creditsTotal ?? 0}</span>
               </div>
               <div className="flex justify-between text-[11px] text-[#BBC0C4] font-mono tracking-tight">
                 <span className="uppercase">Operational Credits Consumed:</span>
-                <span className="font-bold text-white">{wallet?.creditsUsed}</span>
+                <span className="font-bold text-white">{wallet?.creditsUsed ?? 0}</span>
               </div>
             </div>
           </div>
@@ -204,13 +238,11 @@ export default function WalletView({ userId }: WalletViewProps) {
                     className="w-full py-1.5 bg-[#2B3347] hover:bg-[#00D4FF]/10 border border-[#2B3347] hover:border-[#00D4FF]/30 rounded text-[10px] font-bold text-[#00D4FF] uppercase transition-all flex items-center justify-center gap-1.5 shadow-sm tracking-wider"
                   >
                     {purchasingId === pk.id ? (
-                      <>
+                      <span className="flex items-center gap-1.5 justify-center">
                         <Loader2 size={10} className="animate-spin" /> Verifying...
-                      </>
+                      </span>
                     ) : (
-                      <>
-                        Refill Block
-                      </>
+                      <span>Refill Block</span>
                     )}
                   </button>
                 </div>
