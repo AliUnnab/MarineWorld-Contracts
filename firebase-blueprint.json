@@ -352,6 +352,86 @@
         "isRead": { "type": "boolean" }
       },
       "required": ["id", "senderId", "receiverId", "text", "timestamp", "isRead"]
+    },
+    "CreditBalance": {
+      "title": "CreditBalance",
+      "description": "Operational credit balance and usage metrics for a workspace",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "plan": { "type": "string", "enum": ["Starter", "Professional", "Enterprise", "None"] },
+        "remainingCredits": { "type": "integer" },
+        "monthlyAllocation": { "type": "integer" },
+        "purchasedCredits": { "type": "integer" },
+        "consumedCredits": { "type": "integer" },
+        "todayUsage": { "type": "integer" },
+        "assistantUsage": { "type": "integer" },
+        "advisorUsage": { "type": "integer" },
+        "autoRecharge": { "type": "boolean" },
+        "lastResetDate": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "plan", "remainingCredits", "updatedAt"]
+    },
+    "CreditLedgerEntry": {
+      "title": "CreditLedgerEntry",
+      "description": "Permanent audit record of a credit transaction",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "module": { "type": "string" },
+        "action": { "type": "string" },
+        "creditsConsumed": { "type": "integer" },
+        "creditsRemaining": { "type": "integer" },
+        "status": { "type": "string", "enum": ["success", "failed", "cancelled"] },
+        "transactionId": { "type": "string" }
+      },
+      "required": ["timestamp", "userId", "workspaceId", "creditsConsumed", "creditsRemaining", "status", "transactionId"]
+    },
+    "ContractData": {
+      "title": "ContractData",
+      "description": "Unified contract workspace state document holding all confirmed sections, active clauses, party details, and jurisdiction keys in real-time.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "agreementType": { "type": "string" },
+        "seller": { "type": "string" },
+        "buyer": { "type": "string" },
+        "contractValue": { "type": "string" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "version": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "foundation": { "type": "object" },
+        "jurisdiction": { "type": "object" },
+        "partyA": { "type": "object" },
+        "partyB": { "type": "object" },
+        "contractFields": { "type": "object" },
+        "participants": { "type": "array" },
+        "clauses": { "type": "array" },
+        "revisions": { "type": "array" },
+        "manuallyCompletedSections": { "type": "array" },
+        "enabledPdfSections": { "type": "array" }
+      },
+      "required": ["updatedAt"]
+    },
+    "InteractiveClause": {
+      "title": "InteractiveClause",
+      "description": "Interactive clause approvals and authorization flags per active contract.",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string" },
+        "approved": { "type": "boolean" },
+        "partyAApproved": { "type": "boolean" },
+        "partyBApproved": { "type": "boolean" },
+        "additionalApproved": { "type": "object" },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "authorizedParties": { "type": "array" }
+      },
+      "required": ["contractId", "approved"]
     }
   },
   "firestore": {
@@ -450,6 +530,22 @@
     "p2p_chats/{chatId}/messages/{messageId}": {
       "schema": "P2PMessage",
       "description": "P2P Chat individual messages list"
+    },
+    "credit_balances/{userId}": {
+      "schema": "CreditBalance",
+      "description": "Workspace operational credit balances"
+    },
+    "credit_ledger/{txId}": {
+      "schema": "CreditLedgerEntry",
+      "description": "Audit trail of all credit transactions"
+    },
+    "contract_data/{contractId}": {
+      "schema": "ContractData",
+      "description": "Unified active contract data storage for real-time document rendering and interactive workspace updates"
+    },
+    "interactive_clauses/{contractId}": {
+      "schema": "InteractiveClause",
+      "description": "Digital signature approvals and interactive clause metrics stream"
     }
   }
 }

@@ -1,0 +1,64 @@
+# MarineWorld Contract Studio (UPhi™ OS)
+
+Welcome to the MarineWorld Contract Studio, the AI-Native Maritime Operations Layer powered by the UPhi.Cloud™ PROTOCOL. This document outlines the system architecture, capabilities, and data layouts to assist language models in parsing, drafting, and analyzing platform workflows.
+
+## Platform Overview
+
+MarineWorld Contract Studio is a sovereign, machine-to-machine business network tailored for verified shipyards, fleet operators, marina managers, charter brokers, and admiralty lawyers. The platform replaces traditional paper-based contract lifecycle management with a cryptographic, AI-supported Contract Operating System.
+
+### Primary Capabilities:
+1. **Contract Lifecycle Management**: Drafting, saved states, relational databases, version histories, and bilateral signatures.
+2. **Multi-Tenant Nodes**: Clean visual swapping between corporate identities and regional maritime offices with 240ms hardware-accelerated synchronization.
+3. **Immutable Registry**: Documents are cryptographically sealed with SHA-256 fingerprint hashes in a silent global ledger.
+4. **Interactive Clause Editor**: Smart contract reasoning where AI provides risk assessments, compliance reviews, and alternative clauses under human governance.
+
+## Public Routes
+
+The platform supports crawlable static directories for public AI documentation and trust charters:
+* `/docs`: Platform & API Documentation.
+* `/help`: Help Center & Knowledge Base (Q&A format).
+* `/trust`: Trust & Integrity Charter.
+* `/security`: Enterprise Security Architecture.
+* `/ai-docs`: AI Services & Operational Credits Policy.
+
+## Core Data Schema
+
+### 1. User Profile (`users/{userId}`)
+* `uid`: string (Firebase Auth unique ID)
+* `email`: string (Corporate email address)
+* `displayName`: string (Full legal name)
+* `companyName`: string (Registered legal entity name)
+* `role`: string (Role-Based Access Control e.g., Admin, Member)
+* `isTeammate`: boolean (Indicator for invited members)
+
+### 2. Subscription State (`subscriptions/{userId}`)
+* `plan`: string ('None' | 'Starter' | 'Professional' | 'Enterprise')
+* `billingCycle`: string ('Monthly' | 'Annual')
+* `status`: string ('active' | 'pending_payment' | 'canceled')
+* `amount`: number (Charge value in USD)
+* `currentPeriodEnd`: ISO-8601 string (Expiration date)
+
+### 3. Credit Wallet (`credit_wallets/{userId}`)
+* `creditsTotal`: number (Allocated total credit quota)
+* `creditsRemaining`: number (Remaining balance)
+* `creditsUsed`: number (Consumed credits for AI services)
+
+### 4. Smart Contracts (`contracts/{contractId}`)
+* `userId`: string (Creator owner ID)
+* `title`: string (Document heading)
+* `category`: string (e.g., Commercial, Charter party, Parts Supply)
+* `documentHash`: string (SHA-256 cryptographic seal)
+* `version`: number (Incremented draft revision number)
+* `status`: string ('draft' | 'pending_signatures' | 'signed' | 'expired')
+* `partyASigned`: boolean (Bilateral signature state)
+* `partyBSigned`: boolean (Bilateral signature state)
+
+---
+
+## AI Services & Operational Credits
+
+Standard operations (drafting, editing, downloading PDFs, checking history) consume zero credits.
+Only execution of high-performance AI features consumes credits from the Operational Wallet:
+* **Clause Risk Analyzer**: 50 credits per run.
+* **Compliance Auditor**: 100 credits per run.
+* **Admiralty Law Copilot**: 75 credits per session.

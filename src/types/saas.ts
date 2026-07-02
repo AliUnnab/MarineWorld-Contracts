@@ -6,6 +6,8 @@ export interface UserProfile {
   role: string;
   createdAt: string;
   twoFactorEnabled?: boolean;
+  acceptableUsePolicyAccepted?: boolean;
+  aupAcceptedAt?: string;
 }
 
 export interface SaasSubscription {
@@ -52,10 +54,15 @@ export interface SaaSContract {
   currency: string;
   status: 'Draft' | 'Review' | 'Approval' | 'Executed' | 'Expired' | 'Pending Review' | 'Verified' | 'Cancelled' | 'Archived';
   riskScore?: 'Low' | 'Medium' | 'High';
+  transactionType?: string;
+  applicableLaw?: string;
+  jurisdiction?: string;
   renewalDate?: string;
   version: string;
   createdAt: string;
   updatedAt: string;
+  partyA?: { name: string; role: string; email?: string; address?: string };
+  partyB?: { name: string; role: string; email?: string; address?: string };
 }
 
 export interface WorkspaceMember {

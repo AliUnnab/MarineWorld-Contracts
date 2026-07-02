@@ -2199,21 +2199,46 @@ export async function updateAgentCommerceContext(companyId: string, contextData:
 /**
  * Shared Audit Logging Utility for compliance tracking
  */
-export async function logAuditEvent(userId: string, action: string, targetDocument: string): Promise<void> {
+export async function logAuditEvent(
+  userId: string,
+  action: string,
+  targetDocument: string,
+  extraParams?: {
+    eventId?: string;
+    workspaceId?: string;
+    previousState?: any;
+    newState?: any;
+    hashReference?: string;
+    registryReference?: string;
+    deviceInfo?: string;
+    ipAddress?: string;
+  }
+): Promise<void> {
   try {
     const actorEmail = auth.currentUser?.email || "system@marineworld.org";
     const actorName = auth.currentUser?.displayName || "System Identity Gate";
     const logRef = collection(db, 'audit_logs');
+    
+    // Defaulting missing ID
+    const eventId = extraParams?.eventId || `EVT-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    
     await addDoc(logRef, {
+      eventId,
       userId,
+      workspaceId: extraParams?.workspaceId || "Not Specified",
       actorName,
       actorEmail,
       action,
       targetDocument,
-      ipAddress: "128.91.44.11",
+      previousState: extraParams?.previousState || null,
+      newState: extraParams?.newState || null,
+      hashReference: extraParams?.hashReference || "Not Specified",
+      registryReference: extraParams?.registryReference || "Not Specified",
+      ipAddress: extraParams?.ipAddress || "128.91.44.11",
+      deviceInfo: extraParams?.deviceInfo || navigator.userAgent,
       timestamp: new Date().toISOString()
     });
-    console.log(`[AUDIT LOG] ${action} - Success.`);
+    console.log(`[AUDIT LOG] ${action} - Success. Event ID: ${eventId}`);
   } catch (err) {
     console.error("Failed to log audit event:", err);
   }

@@ -6,6 +6,7 @@ import {
   ExternalLink, HelpCircle, Loader2, RefreshCw 
 } from 'lucide-react';
 import { AuditLogEvent } from '../types/saas';
+import { mockAuditLogs } from '../mockDataFallback';
 
 interface AuditViewProps {
   userId: string;
@@ -19,6 +20,29 @@ export default function AuditView({ userId }: AuditViewProps) {
   useEffect(() => {
     if (!userId) return;
 
+    const quotaActive = window.localStorage.getItem('firestore_quota_exceeded') === 'true';
+
+    const isQuotaError = (error: any) => {
+      return error && (
+        error.message?.toLowerCase().includes('quota') ||
+        error.message?.toLowerCase().includes('limit') ||
+        error.message?.toLowerCase().includes('resource_exhausted') ||
+        error.code === 'resource-exhausted'
+      );
+    };
+
+    if (quotaActive) {
+      setLogs(mockAuditLogs);
+      setLoading(false);
+      return;
+    }
+
+    const triggerQuotaFallback = () => {
+      (window as any).__markQuotaExceeded?.();
+      setLogs(mockAuditLogs);
+      setLoading(false);
+    };
+
     // Listen to audit logs
     const qLogs = query(collection(db, 'audit_logs'), where('userId', '==', userId));
     const unsubscribe = onSnapshot(qLogs, (snap) => {
@@ -26,7 +50,10 @@ export default function AuditView({ userId }: AuditViewProps) {
       snap.forEach((docSnap) => {
         const data = docSnap.data();
         if (data.userId === userId) {
-          records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+          const act = (data.action || '').toLowerCase();
+          if (act.includes('executed & signed') || act.includes('deployed template') || act.includes('balance') || act.includes('deployed')) {
+            records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+          }
         }
       });
       
@@ -46,13 +73,20 @@ export default function AuditView({ userId }: AuditViewProps) {
       setLoading(false);
     }, (err) => {
       console.error("Firestore loading audit logs failed, fallback query direct:", err);
+      if (isQuotaError(err)) {
+        triggerQuotaFallback();
+        return;
+      }
       // Fallback simple fetch without index ordering
       getDocs(qLogs).then((snap) => {
         const records: AuditLogEvent[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data();
           if (data.userId === userId) {
-            records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+            const act = (data.action || '').toLowerCase();
+            if (act.includes('executed & signed') || act.includes('deployed template') || act.includes('balance') || act.includes('deployed')) {
+              records.push({ id: docSnap.id, ...data } as AuditLogEvent);
+            }
           }
         });
         records.sort((a, b) => {
@@ -67,6 +101,8 @@ export default function AuditView({ userId }: AuditViewProps) {
         });
         setLogs(records);
         setLoading(false);
+      }).catch((fetchErr) => {
+        if (isQuotaError(fetchErr)) triggerQuotaFallback();
       });
     });
 

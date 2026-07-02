@@ -1,9 +1,152 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Open access for sandbox preview environment to resolve all query permission issues
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny
     match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profile and settings
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // Wallets and Subscriptions
+    match /credit_wallets/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+    match /wallets/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    match /subscriptions/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+    match /workspace_notes/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Financial Records (Immutable, restricted by userId in document)
+    match /credit_transactions/{txId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+    match /invoices/{invoiceId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+    
+    match /execution_tokens/{token} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+    
+    // Core Application Data
+    match /contracts/{contractId} {
+      // Sandbox: We allow public read for execution portal, assuming ID is unguessable token
+      allow read: if true; 
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if (isSignedIn() && resource.data.userId == request.auth.uid) || 
+                    (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'version', 'documentHash', 'partyASigned', 'partyBSigned', 'additionalSigned', 'updatedAt', 'revisions']));
+      
+      match /deployments/{deploymentId} {
+         allow read: if true;
+         allow write: if isSignedIn() && get(/databases/$(database)/documents/contracts/$(contractId)).data.userId == request.auth.uid;
+         
+         match /recipients/{recipientId} {
+            allow read: if true;
+            allow write: if true; // Unauthenticated users can update their status. (In prod, validate via functions or tokens)
+         }
+      }
+    }
+    match /contract_data/{contractId} {
       allow read, write: if true;
+    }
+    match /support_tickets/{ticketId} {
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+    match /workspace_members/{memberId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.email == request.auth.token.email);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /audit_logs/{logId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid; 
+      // Actually audit logs might need to be deleted when user deletes account/settings
+    }
+    
+    // Master data / Templates (Shared read for all authenticated users)
+    match /master_templates/{templateId} {
+      allow read, write: if isSignedIn();
+    }
+    match /templates/{templateId} {
+      allow read, write: if isSignedIn();
+    }
+    
+    // Interactive Clauses (Relational sync using get)
+    match /interactive_clauses/{contractId} {
+      allow read, write: if true;
+    }
+
+    // Company sub-collections (Nested under companyId which is userId)
+    match /companies/{companyId} {
+      allow read, write: if isOwner(companyId);
+      
+      match /offerings/{offeringId} {
+        allow read, write: if isOwner(companyId);
+      }
+      match /commercial_workflows/{workflowId} {
+        allow read, write: if isOwner(companyId);
+      }
+      match /documents/{documentId} {
+        allow read, write: if isOwner(companyId);
+      }
+      match /requests/{requestId} {
+        allow read, write: if isOwner(companyId);
+      }
+      match /agent_context/{contextId} {
+        allow read, write: if isOwner(companyId);
+      }
+      match /copilot_sessions/{contractId} {
+         allow read, write: if isOwner(companyId);
+         match /messages/{messageId} {
+           allow read, write: if isOwner(companyId);
+         }
+      }
+    }
+
+    // Miscellaneous Collections (Allow authenticated users for sandbox)
+    match /billing_states/{stateId} {
+      allow read, write: if isSignedIn();
+    }
+    match /workspace_states/{stateId} {
+      allow read, write: if isSignedIn();
+    }
+    match /platform_transactions/{txId} {
+      allow read, write: if isSignedIn();
+    }
+    match /master_ledger_transactions/{txId} {
+      allow read, write: if isSignedIn();
+    }
+    match /platform_metrics/{metricId} {
+      allow read, write: if isSignedIn();
     }
   }
 }

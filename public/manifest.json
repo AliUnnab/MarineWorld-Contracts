@@ -1,0 +1,22 @@
+{
+  "short_name": "MarineWorld",
+  "name": "MarineWorld Contract Studio",
+  "description": "The Contract Operating System for the Global Maritime Economy",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/favicon.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#171B26",
+  "theme_color": "#171B26",
+  "display": "standalone",
+  "orientation": "portrait"
+}

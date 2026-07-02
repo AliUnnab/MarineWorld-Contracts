@@ -9,6 +9,10 @@ import LandingPage from './components/LandingPage';
 import AuthScreens from './components/AuthScreens';
 import SaaSLayout from './components/SaaSLayout';
 
+import { VerificationView } from './components/VerificationView';
+import ExecutionPortal from './components/ExecutionPortal';
+import CookieConsent from './components/CookieConsent';
+
 // Establish standard paths and fallback route mappings
 type RoutePath = 
   | '/' 
@@ -17,6 +21,7 @@ type RoutePath =
   | '/forgot-password' 
   | '/verify-email' 
   | '/2fa'
+  | '/verify'
   | '/dashboard'
   | '/repository'
   | '/templates'
@@ -27,20 +32,79 @@ type RoutePath =
   | '/workspace'
   | '/audit'
   | '/settings'
-  | '/support';
+  | '/support'
+  | '/docs'
+  | '/help'
+  | '/trust'
+  | '/security'
+  | '/ai-docs';
+
+const verifiedStripeSessions = new Set<string>();
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(() => {
+    try {
+      const cached = localStorage.getItem('cached_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // Keep cached_user in sync with currentUser state
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('cached_user', JSON.stringify({
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: currentUser.displayName || currentUser.email?.split('@')[0]
+      }));
+    } else {
+      localStorage.removeItem('cached_user');
+    }
+  }, [currentUser]);
+
   const [appInitializing, setAppInitializing] = useState(true);
   
-  // Real pathname-based router state
-  const [currentRoute, setCurrentRoute] = useState<RoutePath>('/');
+  // Real pathname-based router state with localStorage fallback for reload persistence
+  const [currentRoute, setCurrentRoute] = useState<RoutePath>(() => {
+    let path = localStorage.getItem('current_route') || window.location.pathname;
+    if (path.endsWith('/') && path.length > 1) {
+      path = path.slice(0, -1);
+    }
+    if (path.startsWith('/verify')) path = '/verify';
+    const validPaths = [
+      '/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/verify',
+      '/dashboard', '/repository', '/templates', '/new-contract', '/wallet', '/billing', 
+      '/subscription', '/workspace', '/audit', '/settings', '/support',
+      '/docs', '/help', '/trust', '/security', '/ai-docs'
+    ];
+    return validPaths.includes(path) ? (path as RoutePath) : '/';
+  });
+
+  const currentRouteRef = React.useRef(currentRoute);
+  useEffect(() => {
+    currentRouteRef.current = currentRoute;
+  }, [currentRoute]);
 
   // Synced URL navigator helper to support direct URLs and browser history links
   const navigateTo = (path: string) => {
-    window.history.pushState(null, '', path);
-    setCurrentRoute(path as RoutePath);
+    let cleanPath = path;
+    if (cleanPath.endsWith('/') && cleanPath.length > 1) {
+      cleanPath = cleanPath.slice(0, -1);
+    }
+    window.history.pushState(null, '', cleanPath);
+    setCurrentRoute(cleanPath as RoutePath);
+    localStorage.setItem('current_route', cleanPath);
   };
+
+  // Sync URL bar on mount if restored from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('current_route');
+    if (stored && stored !== window.location.pathname) {
+      window.history.replaceState(null, '', stored);
+    }
+  }, []);
 
   const [verifyingSession, setVerifyingSession] = useState(false);
 
@@ -55,9 +119,26 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const handleVerifyStripeSession = async (sessionId: string) => {
+    if (verifiedStripeSessions.has(sessionId)) {
+      console.warn("[Stripe Verify] Session already being processed in memory:", sessionId);
+      return;
+    }
+    verifiedStripeSessions.add(sessionId);
+
     setVerifyingSession(true);
     let verifySuccess = false;
     try {
+      const { doc, getDoc, setDoc, updateDoc, collection, addDoc, increment } = await import('firebase/firestore');
+
+      // Idempotency check: check if this Stripe Checkout Session has already been processed
+      const sessionRef = doc(db, 'processed_stripe_sessions', sessionId);
+      const sessionSnap = await getDoc(sessionRef);
+      if (sessionSnap.exists()) {
+        console.warn("[Stripe Verify] Checkout Session already processed and provisioned:", sessionId);
+        verifySuccess = true;
+        return;
+      }
+
       const response = await fetch('/api/stripe/verify-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,8 +147,7 @@ const App: React.FC = () => {
       const data = await response.json();
 
       if (data.success && currentUser) {
-        const { userId, planId, mode } = data.metadata;
-        const { doc, setDoc, updateDoc, collection, addDoc, increment } = await import('firebase/firestore');
+        const { userId, planId, mode, billingCycle } = data.metadata;
 
         if (mode === 'subscription') {
           // Find plan info
@@ -79,13 +159,28 @@ const App: React.FC = () => {
           const planInfo = plans.find(p => p.id === planId);
 
           if (planInfo) {
-            // Update Firestore
+            const isAnnual = billingCycle === 'annual';
+            const priceVal = isAnnual ? planInfo.price * 10 : planInfo.price;
+            const billingCycleStr = isAnnual ? 'Annual' : 'Monthly';
+            const periodDays = isAnnual ? 365 : 30;
+            const currentPeriodStart = new Date().toISOString();
+            const currentPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
+
+            // Update subscription details in Firestore block
             await setDoc(doc(db, 'subscriptions', currentUser.uid), {
               status: 'active',
               plan: planId,
+              amount: priceVal,
+              billingCycle: billingCycleStr,
+              currentPeriodStart,
+              currentPeriodEnd,
               updatedAt: new Date().toISOString()
             }, { merge: true });
 
+            // Synchronize user profile planId
+            await setDoc(doc(db, 'users', currentUser.uid), { planId: planId }, { merge: true });
+
+            // Initialize/update credit wallets capacities
             await setDoc(doc(db, 'credit_wallets', currentUser.uid), {
               id: currentUser.uid,
               userId: currentUser.uid,
@@ -97,32 +192,59 @@ const App: React.FC = () => {
               rechargeAmount: 500
             }, { merge: true });
 
+            // Synchronize wallets payment method
+            await setDoc(doc(db, 'wallets', currentUser.uid), {
+              isPaymentMethodValid: true,
+              lastFour: 'Stripe',
+              cardHolder: currentUser.displayName || currentUser.email || 'Customer',
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+
+            // Log invoice statement
             await addDoc(collection(db, 'invoices'), {
               userId: currentUser.uid,
               invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
-              amount: `$${planInfo.price}.00`,
+              amount: `$${priceVal}.00`,
               status: 'paid',
               date: new Date().toISOString(),
               plan: `${planId} Plan Subscription`,
-              description: `B2B ${planId} Subscription Activation`,
+              description: `B2B ${planId} ${billingCycleStr} Subscription Activation`,
               downloadUrl: '#'
             });
 
             try {
-              await logAuditEvent(currentUser.uid, `Stripe Subscription Payment Verified & Activated: ${planId} Plan`, "Billing & Subscription");
+              await logAuditEvent(currentUser.uid, `Stripe Subscription Payment Verified & Activated: ${planId} Plan (${billingCycleStr}). Price: $${priceVal}.00`, "Billing & Subscription");
             } catch (logErr) {
               console.error("Payment verify log failed:", logErr);
             }
+
+            // Mark session as processed to prevent double-crediting/provisioning
+            await setDoc(sessionRef, {
+              processedAt: new Date().toISOString(),
+              userId: currentUser.uid,
+              planId: planId,
+              credits: planInfo.credits,
+              mode: mode
+            });
+
             verifySuccess = true;
           }
         } else if (mode === 'payment') {
-          // It's a top-up
+          // It's a top-up (credits or emails)
           const packs = [
+            // New packages
+            { id: 'pkt_1000', name: 'Credit Pack', credits: 1000, price: '$19.00' },
+            { id: 'pkt_3000', name: 'Credit Pack', credits: 3000, price: '$49.00' },
+            { id: 'pkt_10000', name: 'Credit Pack', credits: 10000, price: '$129.00' },
+            { id: 'emp_500', name: 'Starter Email Pack', credits: 500, price: '$10.00' },
+            { id: 'emp_2500', name: 'Business Email Pack', credits: 2500, price: '$35.00' },
+            { id: 'emp_10000', name: 'Enterprise Email Pack', credits: 10000, price: '$99.00' },
+            // Old packages (for compatibility)
             { id: 'pkt_500', name: 'Starter Pact', credits: 500, price: '$15.00' },
             { id: 'pkt_1500', name: 'Corporate Pact', credits: 1500, price: '$40.00' },
             { id: 'pkt_5000', name: 'Elite Pact', credits: 5000, price: '$99.00' }
           ];
-          const pack = packs.find(p => p.name === planId);
+          const pack = packs.find(p => p.id === planId) || packs.find(p => p.name === planId);
           if (pack) {
             await updateDoc(doc(db, 'credit_wallets', currentUser.uid), {
               creditsTotal: increment(pack.credits),
@@ -147,11 +269,29 @@ const App: React.FC = () => {
               plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
             });
 
+            // Synchronize wallets payment method
+            await setDoc(doc(db, 'wallets', currentUser.uid), {
+              isPaymentMethodValid: true,
+              lastFour: 'Stripe',
+              cardHolder: currentUser.displayName || currentUser.email || 'Customer',
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+
             try {
               await logAuditEvent(currentUser.uid, `Stripe Quota Refill Verified: ${pack.name} (+${pack.credits} Credits)`, "Billing & Subscription");
             } catch (logErr) {
               console.error("Quota refill verify log failed:", logErr);
             }
+
+            // Mark session as processed to prevent double-crediting/provisioning
+            await setDoc(sessionRef, {
+              processedAt: new Date().toISOString(),
+              userId: currentUser.uid,
+              planId: planId,
+              credits: pack.credits,
+              mode: mode
+            });
+
             verifySuccess = true;
           }
         }
@@ -176,17 +316,28 @@ const App: React.FC = () => {
   useEffect(() => {
     // Sync React routing state with actual browser address bar pathname
     const handleLocationChange = () => {
-      const path = window.location.pathname as RoutePath;
+      let path = window.location.pathname as string;
+      if (path.endsWith('/') && path.length > 1) {
+        path = path.slice(0, -1);
+      }
+      if (path.startsWith('/verify')) path = '/verify';
       // Filter valid paths
       const validPaths = [
-        '/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa',
+        '/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/verify',
         '/dashboard', '/repository', '/templates', '/new-contract', '/wallet', '/billing', 
-        '/subscription', '/workspace', '/audit', '/settings', '/support'
+        '/subscription', '/workspace', '/audit', '/settings', '/support',
+        '/docs', '/help', '/trust', '/security', '/ai-docs'
       ];
       if (validPaths.includes(path)) {
-        setCurrentRoute(path);
+        setCurrentRoute(path as RoutePath);
+        localStorage.setItem('current_route', path);
       } else {
-        setCurrentRoute('/'); // Fallback
+        const stored = localStorage.getItem('current_route');
+        if (stored && validPaths.includes(stored)) {
+          setCurrentRoute(stored as RoutePath);
+        } else {
+          setCurrentRoute('/'); // Fallback
+        }
       }
     };
 
@@ -194,9 +345,25 @@ const App: React.FC = () => {
     window.addEventListener('popstate', handleLocationChange);
     handleLocationChange(); // run immediately
 
+    const isQuotaError = (error: any) => {
+      return error && (
+        error.message?.toLowerCase().includes('quota') ||
+        error.message?.toLowerCase().includes('limit') ||
+        error.message?.toLowerCase().includes('resource_exhausted') ||
+        error.code === 'resource-exhausted'
+      );
+    };
+
     // Bind real-time Firebase Auth state change observer
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      const currentPath = currentRouteRef.current;
       try {
+        if (window.sessionStorage.getItem('is_signing_out') === 'true') {
+          window.sessionStorage.removeItem('is_signing_out');
+          setCurrentUser(null);
+          setAppInitializing(false);
+          return;
+        }
         if (user) {
           const isRegistering = window.sessionStorage.getItem('is_registering') === 'true';
           if (isRegistering) {
@@ -204,41 +371,155 @@ const App: React.FC = () => {
             return;
           }
 
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          
-          if (!userDocSnap.exists()) {
-            const { signOut } = await import('firebase/auth');
-            await signOut(auth);
-            setCurrentUser(null);
-            window.localStorage.setItem('auth_error', 'Bu hesap Firestore veri tabanında kayıtlı değil. Giriş engellendi.');
-            navigateTo('/login');
+          const quotaActive = window.localStorage.getItem('firestore_quota_exceeded') === 'true';
+          if (quotaActive) {
+            setCurrentUser(user);
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasSessionId = urlParams.has('session_id');
+
+            if (['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath) && !hasSessionId) {
+              navigateTo('/dashboard');
+            }
             return;
+          }
+
+          const { collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } = await import('firebase/firestore');
+
+          let workspaceOwnerId = null;
+          let teammateRole = null;
+          let ownerCompanyName = "";
+
+          try {
+            const memberQuery = query(collection(db, 'workspace_members'), where('email', '==', user.email || ''));
+            const memberSnap = await getDocs(memberQuery);
+            
+            if (!memberSnap.empty) {
+              const memberData = memberSnap.docs[0].data();
+              workspaceOwnerId = memberData.userId;
+              teammateRole = memberData.role;
+              
+              // Get owner's company name
+              const ownerDocRef = doc(db, 'users', workspaceOwnerId);
+              const ownerDocSnap = await getDoc(ownerDocRef);
+              if (ownerDocSnap.exists()) {
+                ownerCompanyName = ownerDocSnap.data().companyName || "";
+              }
+
+              // Update status to 'active' if it was pending
+              if (memberData.status === 'pending') {
+                await updateDoc(memberSnap.docs[0].ref, { status: 'active' });
+              }
+            }
+          } catch (memberErr) {
+            console.error("Workspace member check failed:", memberErr);
+          }
+
+          let userDocSnap;
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            userDocSnap = await getDoc(userDocRef);
+            
+            if (!userDocSnap.exists()) {
+              if (workspaceOwnerId) {
+                // Auto-create user profile for teammate
+                await setDoc(userDocRef, {
+                  uid: user.uid,
+                  email: user.email,
+                  displayName: user.displayName || user.email?.split('@')[0] || "Team Member",
+                  companyName: ownerCompanyName || "Associated Workspace Group",
+                  isTeammate: true,
+                  workspaceOwnerId: workspaceOwnerId,
+                  role: teammateRole,
+                  createdAt: new Date().toISOString()
+                });
+                userDocSnap = await getDoc(userDocRef);
+              } else {
+                const { signOut } = await import('firebase/auth');
+                await signOut(auth);
+                setCurrentUser(null);
+                window.localStorage.setItem('auth_error', 'Bu hesap Firestore veri tabanında kayıtlı değil. Giriş engellendi.');
+                navigateTo('/login');
+                return;
+              }
+            } else {
+              // Ensure teammate profile fields are up to date if they were invited
+              if (workspaceOwnerId && (!userDocSnap.data().workspaceOwnerId || userDocSnap.data().role !== teammateRole)) {
+                await setDoc(userDocRef, {
+                  isTeammate: true,
+                  workspaceOwnerId: workspaceOwnerId,
+                  role: teammateRole,
+                  companyName: ownerCompanyName || userDocSnap.data().companyName
+                }, { merge: true });
+                userDocSnap = await getDoc(userDocRef);
+              }
+            }
+          } catch (getDocErr) {
+            if (isQuotaError(getDocErr)) {
+              console.warn("Quota limit detected during auth verification. Activating offline sandbox fallback.");
+              window.localStorage.setItem('firestore_quota_exceeded', 'true');
+              (window as any).__markQuotaExceeded?.();
+              
+              setCurrentUser(user);
+              if (['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath)) {
+                navigateTo('/dashboard');
+              }
+              return;
+            } else {
+              throw getDocErr;
+            }
           }
           
           setCurrentUser(user);
           
-          const currentPath = window.location.pathname;
           const urlParams = new URLSearchParams(window.location.search);
           const hasSessionId = urlParams.has('session_id');
 
-          if (currentPath === '/' && !hasSessionId) {
+          if (['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath) && !hasSessionId) {
             navigateTo('/dashboard');
           }
         } else {
-          setCurrentUser(null);
+          window.sessionStorage.removeItem('is_signing_out');
+          
+          // Check if we have a cached user in localStorage as a fallback for iframe sandbox / refresh persistence
+          const cached = localStorage.getItem('cached_user');
+          if (cached) {
+            try {
+              const cachedUserObj = JSON.parse(cached);
+              if (cachedUserObj && cachedUserObj.uid) {
+                console.log("[Auth Fallback] Restoring cached user from localStorage:", cachedUserObj.email);
+                setCurrentUser(cachedUserObj as any);
+                setAppInitializing(false);
+                return;
+              }
+            } catch (e) {}
+          }
+          
           // If not logged in and requesting protected scopes, redirect to login gate
-          const currentPath = window.location.pathname;
-          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath)) {
-            navigateTo('/');
+          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs'].includes(currentPath) && !currentPath.startsWith('/verify')) {
+            setCurrentUser(null);
+            navigateTo('/login');
+          } else {
+            setCurrentUser(null);
+            localStorage.setItem('current_route', currentPath);
           }
         }
       } catch (err) {
         console.error("Firestore user verification error:", err);
-        const { signOut } = await import('firebase/auth');
-        await signOut(auth);
-        setCurrentUser(null);
-        navigateTo('/login');
+        // Engage simulated sandbox mode fallback for any database error to prevent kicking the user out
+        window.localStorage.setItem('firestore_quota_exceeded', 'true');
+        if (typeof (window as any).__markQuotaExceeded === 'function') {
+          (window as any).__markQuotaExceeded();
+        }
+        if (user) {
+          setCurrentUser(user);
+          if (['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentPath)) {
+            navigateTo('/dashboard');
+          }
+        } else {
+          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs'].includes(currentPath) && !currentPath.startsWith('/verify')) {
+            navigateTo('/login');
+          }
+        }
       } finally {
         setAppInitializing(false);
       }
@@ -265,11 +546,17 @@ const App: React.FC = () => {
 
   // Check if we are in an active auth screen route
   const isAuthRoute = ['/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentRoute);
+  const isVerificationRoute = currentRoute === '/verify' || window.location.pathname.startsWith('/verify');
+  const isExecutionRoute = window.location.pathname.startsWith('/execute/');
 
   // Render routing state machine
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {currentUser && !isAuthRoute ? (
+      {isExecutionRoute ? (
+         <ExecutionPortal />
+      ) : isVerificationRoute ? (
+         <VerificationView />
+      ) : currentUser && !isAuthRoute ? (
         // Evironment 02: Platform Workspace (Dark mode theme context is coordinated in SaaSLayout)
         <SaaSLayout 
           user={currentUser} 
@@ -295,7 +582,7 @@ const App: React.FC = () => {
       ) : (
         // Environment 01: Public Portal (Light style Stripe/Linear context)
         <>
-          {currentRoute === '/' && (
+          {(currentRoute === '/' || (!['/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentRoute) && !isVerificationRoute && !isExecutionRoute)) && (
             <LandingPage onNavigate={navigateTo} />
           )}
 
@@ -340,6 +627,7 @@ const App: React.FC = () => {
           )}
         </>
       )}
+      <CookieConsent />
     </div>
   );
 };

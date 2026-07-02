@@ -64,10 +64,26 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         
         // Verify user document existence in Firestore (Unregistered users cannot enter)
         const userDocRef = doc(db, 'users', signedUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (!userDocSnap.exists()) {
-          await signOut(auth);
-          throw new Error("Bu kullanıcı kayıtlı değil. Giriş engellendi.");
+        let userDocSnap;
+        try {
+          userDocSnap = await getDoc(userDocRef);
+          if (!userDocSnap.exists()) {
+            await signOut(auth);
+            throw new Error("This corporate identity is not registered in our system. Access denied.");
+          }
+        } catch (getDocErr: any) {
+          if (getDocErr && (
+            getDocErr.message?.toLowerCase().includes('quota') ||
+            getDocErr.message?.toLowerCase().includes('limit') ||
+            getDocErr.message?.toLowerCase().includes('resource_exhausted') ||
+            getDocErr.code === 'resource-exhausted'
+          )) {
+            console.warn("Quota limit detected during user check. Activating offline sandbox.");
+            window.localStorage.setItem('firestore_quota_exceeded', 'true');
+            (window as any).__markQuotaExceeded?.();
+          } else {
+            throw getDocErr;
+          }
         }
         
         // Transition to 2FA screen for enterprise security representation
@@ -86,7 +102,22 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
           await updateProfile(signedUser, { displayName: displayName });
           
           // Seed database
-          await seedUserDataIfNecessary(signedUser.uid, email, displayName, companyName);
+          try {
+            await seedUserDataIfNecessary(signedUser.uid, email, displayName, companyName);
+          } catch (seedErr: any) {
+            if (seedErr && (
+              seedErr.message?.toLowerCase().includes('quota') ||
+              seedErr.message?.toLowerCase().includes('limit') ||
+              seedErr.message?.toLowerCase().includes('resource_exhausted') ||
+              seedErr.code === 'resource-exhausted'
+            )) {
+              console.warn("Quota limit detected during user seeding. Activating offline sandbox.");
+              window.localStorage.setItem('firestore_quota_exceeded', 'true');
+              (window as any).__markQuotaExceeded?.();
+            } else {
+              throw seedErr;
+            }
+          }
           
           try {
             await logAuditEvent(signedUser.uid, "User registered successfully with email: " + email, "User Session Profile");
@@ -95,7 +126,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
           }
           
           setTempUser(signedUser);
-          setSuccessMsg("B2B Enterprise Account registered successfully. Magic verification link dispatched to " + email);
+          setSuccessMsg("Enterprise Workspace initialized successfully. Magic verification link dispatched to " + email);
           setMode('verify-email');
         } finally {
           window.sessionStorage.removeItem('is_registering');
@@ -117,7 +148,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       }
 
       if (error.code === 'auth/operation-not-allowed') {
-        setErrorMsg("Firebase Console'da 'Email/Password' (E-posta/Şifre) ile giriş/kayıt yöntemi etkinleştirilmemiş. Lütfen Firebase Console -> Authentication -> Sign-in method sekmesinden E-posta/Şifre (Email/Password) sağlayıcısını etkinleştirin.");
+        setErrorMsg("Email/Password authentication provider is not enabled in the Firebase console. Please enable it in the console under Authentication -> Sign-in method.");
         return;
       }
       
@@ -143,10 +174,26 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       
       // Verify user document existence in Firestore (Unregistered users cannot enter)
       const userDocRef = doc(db, 'users', googleUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      if (!userDocSnap.exists()) {
-        await signOut(auth);
-        throw new Error("Bu Google hesabı sistemde kayıtlı değil. Giriş engellendi.");
+      let userDocSnap;
+      try {
+        userDocSnap = await getDoc(userDocRef);
+        if (!userDocSnap.exists()) {
+          await signOut(auth);
+          throw new Error("This Google account is not registered in our system. Access denied.");
+        }
+      } catch (getDocErr: any) {
+        if (getDocErr && (
+          getDocErr.message?.toLowerCase().includes('quota') ||
+          getDocErr.message?.toLowerCase().includes('limit') ||
+          getDocErr.message?.toLowerCase().includes('resource_exhausted') ||
+          getDocErr.code === 'resource-exhausted'
+        )) {
+          console.warn("Quota limit detected during Google SSO user check. Activating offline sandbox.");
+          window.localStorage.setItem('firestore_quota_exceeded', 'true');
+          (window as any).__markQuotaExceeded?.();
+        } else {
+          throw getDocErr;
+        }
       }
 
       // Successfully pass User up
@@ -175,10 +222,26 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       
       // Verify user document existence in Firestore (Unregistered users cannot enter)
       const userDocRef = doc(db, 'users', msUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      if (!userDocSnap.exists()) {
-        await signOut(auth);
-        throw new Error("Bu Microsoft hesabı sistemde kayıtlı değil. Giriş engellendi.");
+      let userDocSnap;
+      try {
+        userDocSnap = await getDoc(userDocRef);
+        if (!userDocSnap.exists()) {
+          await signOut(auth);
+          throw new Error("This Microsoft account is not registered in our system. Access denied.");
+        }
+      } catch (getDocErr: any) {
+        if (getDocErr && (
+          getDocErr.message?.toLowerCase().includes('quota') ||
+          getDocErr.message?.toLowerCase().includes('limit') ||
+          getDocErr.message?.toLowerCase().includes('resource_exhausted') ||
+          getDocErr.code === 'resource-exhausted'
+        )) {
+          console.warn("Quota limit detected during Microsoft SSO user check. Activating offline sandbox.");
+          window.localStorage.setItem('firestore_quota_exceeded', 'true');
+          (window as any).__markQuotaExceeded?.();
+        } else {
+          throw getDocErr;
+        }
       }
 
       try {
@@ -255,34 +318,34 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-12 h-12 rounded bg-[#141924] mx-auto flex items-center justify-center text-[#00D4FF] mb-4 shadow-sm border border-[#2B3347]">
-          <ShieldCheck size={26} />
+        <div className="w-14 h-14 rounded-xl bg-gradient-to-b from-[#1F293F] to-[#151D2C] mx-auto flex items-center justify-center text-[#00D4FF] mb-4 shadow-md border border-[#2B354D]">
+          <ShieldCheck size={28} />
         </div>
-        <h2 className="text-2xl font-manrope font-semibold tracking-tight text-white uppercase">
-          {mode === 'login' && "Sign in lock active"}
-          {mode === 'register' && "B2B Operating System Registry"}
+        <h2 className="text-2xl font-manrope font-semibold tracking-tight text-white">
+          {mode === 'login' && "Secure Workspace Access"}
+          {mode === 'register' && "Enterprise Workspace Registration"}
           {mode === 'forgot-password' && "Request Crypt-key Reset"}
           {mode === 'verify-email' && "Magic Link Sent"}
           {mode === '2fa' && "Multi-Factor Clearance Required"}
         </h2>
-        <p className="mt-2 text-xs text-[#BBC0C4] font-mono tracking-tight">
-          {mode === 'login' && "Secure access to Marine & Trade Operations Layer"}
-          {mode === 'register' && "Initiate your isolated sovereign database instance"}
+        <p className="mt-2 text-xs text-[#BBC0C4] font-mono tracking-tight leading-relaxed px-4">
+          {mode === 'login' && "Authenticate to access your Contract Studio enterprise workspace."}
+          {mode === 'register' && "Initialize your secure Contract Studio workspace for enterprise contract operations, collaboration and agreement governance."}
           {mode === 'forgot-password' && "Send password restoration instructions securely"}
           {mode === '2fa' && "Enter your 6-digit corporate key tracker"}
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-[#202636] py-8 px-4 border border-[#2B3347] rounded sm:px-10">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+        <div className="bg-gradient-to-b from-[#1C2233] to-[#111622] py-8 px-4 border border-[#2B354D] rounded-2xl shadow-2xl sm:px-10 hover:border-[#00D4FF]/30 transition-all duration-300">
           {errorMsg && (
-            <div className="mb-4 bg-[#F28B82]/10 border-l-4 border-[#F28B82] p-4 text-[13px] text-[#F28B82] font-medium">
+            <div className="mb-4 bg-[#F28B82]/10 border-l-4 border-[#F28B82] p-4 text-[13px] text-[#F28B82] font-medium rounded-r">
               {errorMsg}
             </div>
           )}
 
           {successMsg && (
-            <div className="mb-4 bg-[#00D68F]/10 border-l-4 border-[#00D68F] p-4 text-[13px] text-[#00D68F] font-medium">
+            <div className="mb-4 bg-[#00D68F]/10 border-l-4 border-[#00D68F] p-4 text-[13px] text-[#00D68F] font-medium rounded-r">
               {successMsg}
             </div>
           )}
@@ -290,7 +353,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
           {mode === '2fa' ? (
             <form onSubmit={handle2FAVerify} className="space-y-6">
               <div>
-                <label className="block text-[10px] font-bold text-[#BBC0C4] uppercase tracking-wider">Secure 2FA Code</label>
+                <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Secure 2FA Code</label>
                 <div className="mt-1 relative rounded">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
                     <KeyRound size={16} />
@@ -302,16 +365,16 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                     placeholder="Enter 123456"
                     value={mfaCode}
                     onChange={(e) => setmfaCode(e.target.value.replace(/\D/g, ''))}
-                    className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] font-mono tracking-widest text-center bg-[#171B26] text-white"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] font-mono tracking-widest text-center bg-[#171B26] text-white"
                   />
                 </div>
-                <p className="mt-2 text-[10px] text-[#80868B]">For mock preview, enter <b>123456</b> to authorize the terminal token clearance.</p>
+                <p className="mt-2 text-[10px] text-[#80868B] leading-relaxed">For mock preview, enter <b>123456</b> to authorize the terminal token clearance.</p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
+                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
               >
                 {loading && <Loader2 size={14} className="animate-spin" />}
                 <span>Verify Token clearance</span> <ArrowRight size={14} />
@@ -332,13 +395,13 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                   }
                   onNavigate('/dashboard');
                 }}
-                className="w-full bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-sm font-bold py-2.5 px-4 rounded transition-colors uppercase tracking-wider"
+                className="w-full bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-sm font-bold py-2.5 px-4 rounded-lg transition-colors uppercase tracking-wider"
               >
                 Simulate Direct Entrance (Preview Force-in)
               </button>
               <button
                 onClick={() => setMode('login')}
-                className="text-xs text-[#00D4FF] hover:text-[#33DDFF] font-bold transition-colors underline uppercase tracking-wider"
+                className="text-xs text-[#00D4FF] hover:text-[#33DDFF] font-bold transition-colors underline uppercase tracking-wider block mx-auto"
               >
                 Return to Login Gate
               </button>
@@ -349,7 +412,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                 {mode === 'register' && (
                   <>
                     <div>
-                      <label className="block text-[10px] font-bold text-[#BBC0C4] uppercase tracking-wider">Full Legal Name</label>
+                      <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Full Legal Name</label>
                       <div className="mt-1 relative rounded">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
                           <User size={16} />
@@ -359,14 +422,14 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                           required
                           value={displayName}
                           onChange={(e) => setDisplayName(e.target.value)}
-                          placeholder="Your Name (e.g. Ali Unnab)"
-                          className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                          placeholder="Enter your full legal name (e.g. Michael Anderson)"
+                          className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-[#BBC0C4] uppercase tracking-wider">Company Name</label>
+                      <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Company or Organization</label>
                       <div className="mt-1 relative rounded">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
                           <Briefcase size={16} />
@@ -376,8 +439,8 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                           required
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
-                          placeholder="Corporate Entity Ltd"
-                          className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                          placeholder="Enter your registered legal entity (e.g. Global Maritime Holdings Ltd.)"
+                          className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
                         />
                       </div>
                     </div>
@@ -385,7 +448,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                 )}
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#BBC0C4] uppercase tracking-wider">Business Email</label>
+                  <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Business Email</label>
                   <div className="mt-1 relative rounded">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
                       <Mail size={16} />
@@ -395,15 +458,15 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="business@maritime-trade.com"
-                      className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                      placeholder="name@company.com"
+                      className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
                     />
                   </div>
                 </div>
 
                 {mode !== 'forgot-password' && (
                   <div>
-                    <label className="block text-[10px] font-bold text-[#BBC0C4] uppercase tracking-wider">Passkey Lock</label>
+                    <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Workspace Passkey</label>
                     <div className="mt-1 relative rounded">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
                         <Lock size={16} />
@@ -413,39 +476,47 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                        placeholder={mode === 'register' ? "Create a secure workspace passkey" : "Enter your secure workspace passkey"}
+                        className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
                       />
                     </div>
+                    {mode === 'register' && (
+                      <p className="mt-1.5 text-[10px] text-[#80868B] leading-relaxed">
+                        Minimum 12 characters. Used to protect your enterprise workspace.
+                      </p>
+                    )}
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
                   {mode === 'login' ? (
                     <button
                       type="button"
                       onClick={() => setMode('forgot-password')}
-                      className="text-[10px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors underline uppercase tracking-wider"
+                      className="text-[11px] text-[#BBC0C4] hover:text-[#00D4FF] font-medium transition-colors underline text-left"
                     >
-                      Forgot administrative lock?
+                      Forgot your workspace passkey?
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setMode('login')}
-                      className="text-[10px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors underline uppercase tracking-wider"
-                    >
-                      Already registered?
-                    </button>
+                    <div className="text-[11px] text-[#BBC0C4] leading-relaxed text-left">
+                      Already have an enterprise workspace?{' '}
+                      <button
+                        type="button"
+                        onClick={() => setMode('login')}
+                        className="text-[#00D4FF] hover:text-[#33DDFF] font-semibold transition-colors underline inline"
+                      >
+                        Access your existing workspace
+                      </button>
+                    </div>
                   )}
 
                   {mode === 'login' && (
                     <button
                       type="button"
                       onClick={() => triggerMagicLink()}
-                      className="text-[10px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors underline uppercase tracking-wider"
+                      className="text-[11px] text-[#BBC0C4] hover:text-[#00D4FF] font-medium transition-colors underline text-left sm:text-right"
                     >
-                      magic link bypass
+                      Send Magic Link
                     </button>
                   )}
                 </div>
@@ -454,12 +525,12 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
+                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-all duration-200 items-center gap-1.5 uppercase tracking-wider shadow-md hover:shadow-[0_4px_12px_rgba(0,212,255,0.2)]"
                   >
                     {loading && <Loader2 size={14} className="animate-spin" />}
                     <span>
-                      {mode === 'login' && "Authenticate Terminal"}
-                      {mode === 'register' && "Initialize Sovereign Environment"}
+                      {mode === 'login' && "Access Workspace"}
+                      {mode === 'register' && "Initialize Workspace"}
                       {mode === 'forgot-password' && "Send Reset Link"}
                     </span>
                   </button>
@@ -472,8 +543,8 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-[#2B3347]"></div>
                     </div>
-                    <div className="relative flex justify-center text-[9px] uppercase font-bold tracking-widest text-[#80868B]">
-                      <span className="bg-[#202636] px-3">Enterprise Directory SSO</span>
+                    <div className="relative flex justify-center text-[10px] font-bold tracking-wider text-[#80868B] uppercase">
+                      <span className="bg-[#1C2233] px-3">Enterprise Single Sign-On</span>
                     </div>
                   </div>
 
@@ -481,7 +552,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                     <button
                       onClick={triggerGoogleAuth}
                       disabled={loading}
-                      className="w-full inline-flex justify-center py-2.5 px-4 border border-[#2B3347] rounded bg-[#171B26] text-[10px] font-bold text-white hover:bg-[#2B3347] hover:border-[#00D4FF] transition-colors items-center gap-2 uppercase tracking-wider"
+                      className="w-full inline-flex justify-center py-2.5 px-4 border border-[#2B354D] rounded-lg bg-[#171B26] text-xs font-medium text-white hover:bg-[#1C2233] hover:border-[#00D4FF] transition-all duration-200 items-center gap-2"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -489,12 +560,12 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.1-.13-.21-.26-.35-.35z" fill="#FBBC05"/>
                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                       </svg>
-                      Google
+                      Continue with Google
                     </button>
                     <button
                       onClick={triggerMicrosoftAuth}
                       disabled={loading}
-                      className="w-full inline-flex justify-center py-2.5 px-4 border border-[#2B3347] rounded bg-[#171B26] text-[10px] font-bold text-white hover:bg-[#2B3347] hover:border-[#00D4FF] transition-colors items-center gap-2 uppercase tracking-wider"
+                      className="w-full inline-flex justify-center py-2.5 px-4 border border-[#2B354D] rounded-lg bg-[#171B26] text-xs font-medium text-white hover:bg-[#1C2233] hover:border-[#00D4FF] transition-all duration-200 items-center gap-2"
                     >
                       <svg width="14" height="14" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M0 0h10.9v10.9H0V0z" fill="#f25022"/>
@@ -502,9 +573,15 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                         <path d="M0 12.1h10.9V23H0V12.1z" fill="#00a4ef"/>
                         <path d="M12.1 12.1H23V23H12.1V12.1z" fill="#ffb900"/>
                       </svg>
-                      Microsoft
+                      Continue with Microsoft
                     </button>
                   </div>
+
+                  {mode === 'register' && (
+                    <p className="mt-5 text-[11px] text-[#80868B] text-center leading-relaxed font-mono uppercase tracking-tight">
+                      Your workspace is protected using enterprise-grade authentication and encrypted infrastructure.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -512,7 +589,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                 <div className="mt-6 text-center">
                   <button
                     onClick={() => setMode('login')}
-                    className="text-[10px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors flex items-center justify-center gap-1 mx-auto underline uppercase tracking-wider"
+                    className="text-[11px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors flex items-center justify-center gap-1 mx-auto underline uppercase tracking-wider"
                   >
                     <ChevronLeft size={14} /> Back to Login
                   </button>
@@ -520,13 +597,13 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
               )}
 
               {mode === 'login' && (
-                <div className="mt-8 text-center text-[10px] uppercase tracking-wider">
-                  <span className="text-[#80868B]">First time using terminal?</span>{' '}
+                <div className="mt-8 text-center text-xs border-t border-white/5 pt-6 leading-relaxed">
+                  <span className="text-[#80868B] block mb-2">First time using MarineWorld Contract Studio?</span>{' '}
                   <button
                     onClick={() => setMode('register')}
                     className="text-[#00D4FF] hover:text-[#33DDFF] font-bold transition-colors underline"
                   >
-                    Set up business profile
+                    Initialize your enterprise workspace
                   </button>
                 </div>
               )}

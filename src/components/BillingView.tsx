@@ -6,6 +6,9 @@ import {
   ArrowUpRight, ShieldCheck, RefreshCw, Loader2, Save 
 } from 'lucide-react';
 import { SaaSInvoice } from '../types/saas';
+import { jsPDF } from 'jspdf';
+import PaymentModal from './PaymentModal';
+import { StripeService } from '../services/stripe-service';
 
 interface BillingViewProps {
   userId: string;
@@ -15,6 +18,37 @@ interface BillingViewProps {
 export default function BillingView({ userId, userDisplayName }: BillingViewProps) {
   const [invoices, setInvoices] = useState<SaaSInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const formatToUSD = (amtStr: string) => {
+    if (!amtStr) return 'USD 0.00';
+    let cleaned = amtStr.toUpperCase().trim();
+    if (cleaned.includes('CR') || cleaned.includes('CREDIT') || cleaned.includes('CREDITS')) {
+      const match = cleaned.match(/[\d.]+/);
+      if (match) {
+        const val = parseFloat(match[0]);
+        return `USD ${(val * 0.03).toFixed(2)}`;
+      }
+      return 'USD 0.00';
+    }
+    if (cleaned.includes('$')) {
+      const valStr = cleaned.replace('$', '').trim();
+      const val = parseFloat(valStr);
+      if (!isNaN(val)) {
+        return `USD ${val.toFixed(2)}`;
+      }
+    }
+    if (cleaned.includes('USD')) {
+      const match = cleaned.match(/[\d.]+/);
+      if (match) {
+        return `USD ${parseFloat(match[0]).toFixed(2)}`;
+      }
+    }
+    const match = cleaned.match(/[\d.]+/);
+    if (match) {
+      return `USD ${parseFloat(match[0]).toFixed(2)}`;
+    }
+    return 'USD 0.00';
+  };
   
   // Payment card inputs
   const [cardName, setCardName] = useState(userDisplayName || 'Ali Unnab');
@@ -59,30 +93,229 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
     return () => unsubscribe();
   }, [userId]);
 
-  const handleUpdateCard = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateCard = async (lastFour: string, cardHolder: string) => {
     setUpdatingCard(true);
     try {
       const walletRef = doc(db, 'wallets', userId);
       await setDoc(walletRef, {
         isPaymentMethodValid: true,
-        lastFour: cardNumber.slice(-4),
-        cardHolder: cardName,
+        lastFour: lastFour,
+        cardHolder: cardHolder,
         updatedAt: new Date().toISOString()
       }, { merge: true });
       console.log("Billing primary corporate card successfully tokenized via Stripe secure vaults.");
-      await logAuditEvent(userId, `Updated and tokenized primary billing payment card reference ending in ${cardNumber.slice(-4)}`, "Billing & Ledgers");
+      await logAuditEvent(userId, `Updated and tokenized primary billing payment card reference ending in ${lastFour}`, "Billing & Ledgers");
       setEditingCard(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update wallet card profile:", err);
+      alert("Failed to update card: " + err.message);
     } finally {
       setUpdatingCard(false);
     }
   };
 
   const handleDownloadInvoice = async (invoice: SaaSInvoice) => {
-    // Generate simple client-side printout/alert for mock invoice PDF bypass
-    console.log("Mock invoice PDF generation bypass triggered. Simulated transaction receipt downloaded.");
+    // Generate simple client-side printout for invoice PDF (A5 portrait)
+    // A5 Size: 148 x 210 mm
+    const doc = new jsPDF({ format: 'a5', orientation: 'portrait' });
+    
+    const textBlack = [23, 27, 38];
+    const textGray = [128, 134, 139];
+    const colorAccent = [0, 212, 255];
+    const colorGreen = [0, 214, 143]; 
+    
+    let dateStr = 'N/A';
+    if (invoice.date) {
+      if (typeof invoice.date === 'string') {
+        dateStr = invoice.date;
+      } else if (typeof (invoice.date as any).toDate === 'function') {
+        dateStr = (invoice.date as any).toDate().toLocaleDateString();
+      }
+    }
+
+    // --- HEADER ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("MARINEWORLD", 15, 20);
+    doc.text("Contract Studio", 15, 25);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Enterprise Contract Operating System", 15, 30);
+    
+    // Right side Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(colorAccent[0], colorAccent[1], colorAccent[2]);
+    doc.text("INVOICE", 133, 22, { align: "right" });
+    
+    doc.setFontSize(8);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.setFont("helvetica", "normal");
+    doc.text("Invoice No.", 133, 28, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(invoice.invoiceNumber || "INV-000000", 133, 32, { align: "right" });
+    
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Invoice Date", 133, 38, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(dateStr, 133, 42, { align: "right" });
+    
+    // Line separator
+    doc.setDrawColor(230, 230, 230);
+    doc.line(15, 48, 133, 48);
+    
+    // --- BILL TO ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("BILL TO", 15, 56);
+    
+    doc.setFontSize(8);
+    doc.text("Customer", 15, 62);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    const customerName = userDisplayName || 'MarineWorld User';
+    doc.text(customerName.length > 25 ? customerName.substring(0, 25) + '...' : customerName, 15, 66);
+    
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Workspace ID", 15, 74);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(`WS-${userId.substring(0,8).toUpperCase()}`, 15, 78);
+
+    // Right Column: PAYMENT INFORMATION
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("PAYMENT INFORMATION", 80, 56);
+    
+    doc.text("Payment Method", 80, 62);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("Credit Card (•••• 4242)", 80, 66);
+    
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Payment Provider", 80, 74);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("Stripe", 80, 78);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Transaction ID", 80, 86);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(`TX-${Math.random().toString(36).substring(2,10).toUpperCase()}`, 80, 90);
+
+    // --- INVOICE DETAILS ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("INVOICE DETAILS", 15, 102);
+    
+    doc.setDrawColor(230, 230, 230);
+    doc.line(15, 105, 133, 105);
+    
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("Description", 15, 110);
+    doc.text("Qty", 85, 110, { align: "right" });
+    doc.text("Unit Price", 105, 110, { align: "right" });
+    doc.text("Total", 133, 110, { align: "right" });
+    
+    doc.line(15, 113, 133, 113);
+
+    doc.setFont("helvetica", "normal");
+    const itemDesc = invoice.plan || "Service Pack";
+    doc.text(itemDesc.length > 40 ? itemDesc.substring(0, 37) + '...' : itemDesc, 15, 119);
+    doc.text("1", 85, 119, { align: "right" });
+    doc.text(formatToUSD(invoice.amount), 105, 119, { align: "right" });
+    doc.text(formatToUSD(invoice.amount), 133, 119, { align: "right" });
+    
+    doc.line(15, 123, 133, 123);
+
+    // --- SUMMARY ---
+    // Shaded box for summary
+    doc.setFillColor(248, 249, 250);
+    doc.rect(75, 128, 62, 38, "F");
+    
+    doc.setFontSize(8);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Subtotal", 80, 135);
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(formatToUSD(invoice.amount), 133, 135, { align: "right" });
+    
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Tax", 80, 143);
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("USD 0.00", 133, 143, { align: "right" });
+    
+    doc.setDrawColor(220, 220, 220);
+    doc.line(80, 147, 133, 147);
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Total", 80, 153);
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text(formatToUSD(invoice.amount), 133, 153, { align: "right" });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(colorAccent[0], colorAccent[1], colorAccent[2]);
+    doc.text("Amount Paid", 80, 161);
+    doc.text(formatToUSD(invoice.amount), 133, 161, { align: "right" });
+
+    // PAID badge
+    doc.setFillColor(colorGreen[0], colorGreen[1], colorGreen[2]);
+    doc.roundedRect(15, 128, 24, 8, 1, 1, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.text("PAID", 27, 134, { align: "center" });
+
+    // Mock QR Code
+    const qrX = 117;
+    const qrY = 170;
+    doc.setFillColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.rect(qrX, qrY, 16, 16);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(qrX + 2, qrY + 2, 12, 12, "F");
+    doc.setFillColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.rect(qrX + 3, qrY + 3, 3, 3, "F");
+    doc.rect(qrX + 10, qrY + 3, 3, 3, "F");
+    doc.rect(qrX + 3, qrY + 10, 3, 3, "F");
+    doc.rect(qrX + 10, qrY + 10, 1.5, 1.5, "F");
+    doc.rect(qrX + 11.5, qrY + 11.5, 1.5, 1.5, "F");
+    
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Scan to verify", qrX + 8, qrY + 19, { align: "center" });
+
+    // --- FOOTER ---
+    doc.setDrawColor(230, 230, 230);
+    doc.line(15, 192, 133, 192);
+    
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    doc.text("MarineWorld Contract Studio", 15, 198);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
+    doc.text("Enterprise Contract Operating System", 15, 202);
+    doc.text("Invoice generated automatically. No signature required.", 15, 206);
+    
+    doc.text("support@marineworld.city", 133, 198, { align: "right" });
+    doc.text("Contract Studio Workspace", 133, 202, { align: "right" });
+    
+    doc.save(`Invoice_${invoice.invoiceNumber || 'INV'}.pdf`);
+
     await logAuditEvent(userId, `Simulated download of invoice receipt ${invoice.invoiceNumber} for amount ${invoice.amount}`, "Billing & Ledgers");
   };
 
@@ -105,69 +338,27 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
               <CreditCard size={14} className="text-[#00D4FF]" /> Stripe Payment Profile
             </h4>
             
-            {editingCard ? (
-              <form onSubmit={handleUpdateCard} className="space-y-4 pt-2">
-                <div>
-                  <label className="block text-[9px] uppercase text-[#80868B] font-bold">Holder Name</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={cardName} 
-                    onChange={(e) => setCardName(e.target.value)}
-                    className="w-full mt-1 px-2 py-1.5 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[9px] uppercase text-[#80868B] font-bold">Card Number</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={cardNumber} 
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    className="w-full mt-1 px-2 py-1.5 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[9px] uppercase text-[#80868B] font-bold">Expiry</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={cardExpiry} 
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      className="w-full mt-1 px-2 py-1.5 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] uppercase text-[#80868B] font-bold">CVC</label>
-                    <input 
-                      type="password" 
-                      required 
-                      value={cardCvc} 
-                      onChange={(e) => setCardCvc(e.target.value)}
-                      className="w-full mt-1 px-2 py-1.5 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
-                    />
-                  </div>
-                </div>
-                <div className="pt-2 flex gap-2">
-                  <button 
-                    disabled={updatingCard}
-                    type="submit"
-                    className="flex-1 py-2 bg-[#00D68F] hover:bg-[#33E0A3] text-[#171B26] text-[10px] font-bold uppercase rounded flex items-center justify-center gap-1 transition-all"
-                  >
-                    {updatingCard ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} <span>Tokenize Securely</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setEditingCard(false)}
-                    className="py-2 px-3 bg-[#2B3347] hover:bg-[#323D52] rounded text-[#BBC0C4] text-[10px] font-bold uppercase transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="pt-2">
+            {editingCard && (
+              <PaymentModal 
+                onClose={() => setEditingCard(false)} 
+                onSubmit={async (data) => {
+                  const tokenResult = await StripeService.tokenizeCard(data);
+                  if (!tokenResult.success) {
+                    alert("Card validation failed: " + tokenResult.error);
+                    return;
+                  }
+                  setCardName(data.name);
+                  setCardNumber(data.card);
+                  setCardExpiry(data.expiry);
+                  setCardCvc(data.cvc);
+                  
+                  await handleUpdateCard(tokenResult.lastFour || '4242', tokenResult.cardHolder || data.name);
+                }}
+                loading={updatingCard}
+              />
+            )}
+            
+            <div className="pt-2">
                 <div className="bg-gradient-to-br from-[#040B18] to-[#0A1930] p-5 rounded border border-[#2B3347] text-white relative shadow-md">
                   <span className="text-[8px] bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/25 px-2 py-0.5 rounded uppercase font-bold font-mono tracking-widest absolute top-4 right-4 animate-pulse">Corporate</span>
                   <p className="text-[9px] text-[#80868B] font-mono tracking-wider uppercase font-semibold">Active Ledger Card</p>
@@ -191,7 +382,6 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
                   Change Payment Card Reference
                 </button>
               </div>
-            )}
           </div>
 
           <div className="mt-6 pt-4 border-t border-[#2B3347] flex items-center gap-2 text-[9px] text-[#80868B] font-mono uppercase">
@@ -231,7 +421,7 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
                       {inv.date ? (typeof inv.date === 'string' ? inv.date : (inv.date as any).toDate?.().toLocaleDateString() || String(inv.date)) : 'N/A'}
                     </td>
                       <td className="py-3 px-2 text-[#BBC0C4] font-sans">{inv.plan}</td>
-                      <td className="py-3 px-2 text-right text-[#00D68F] font-bold">{inv.amount}</td>
+                      <td className="py-3 px-2 text-right text-[#00D68F] font-bold">{formatToUSD(inv.amount)}</td>
                       <td className="py-3 px-2 text-center">
                         <span className="px-2 py-0.5 rounded-full text-[8px] font-bold uppercase bg-[#00D68F]/10 text-[#00D68F] border border-[#00D68F]/20">
                           {inv.status}

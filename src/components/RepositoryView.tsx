@@ -7,6 +7,7 @@ import {
   Plus, AlertCircle, RefreshCw 
 } from 'lucide-react';
 import { SaaSContract } from '../types/saas';
+import { mockContracts } from '../mockDataFallback';
 
 interface RepositoryViewProps {
   userId: string;
@@ -19,12 +20,41 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedSector, setSelectedSector] = useState<string>('ALL');
+  const [selectedValueRange, setSelectedValueRange] = useState<string>('ALL');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('ALL');
+  const [selectedRiskScore, setSelectedRiskScore] = useState<string>('ALL');
+  const [selectedLaw, setSelectedLaw] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'title' | 'createdAt' | 'status'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
+
+    const quotaActive = window.localStorage.getItem('firestore_quota_exceeded') === 'true';
+
+    const isQuotaError = (error: any) => {
+      return error && (
+        error.message?.toLowerCase().includes('quota') ||
+        error.message?.toLowerCase().includes('limit') ||
+        error.message?.toLowerCase().includes('resource_exhausted') ||
+        error.code === 'resource-exhausted'
+      );
+    };
+
+    if (quotaActive) {
+      setContracts(mockContracts);
+      setLoading(false);
+      return;
+    }
+
+    const triggerQuotaFallback = () => {
+      (window as any).__markQuotaExceeded?.();
+      setContracts(mockContracts);
+      setLoading(false);
+    };
 
     const qContracts = query(collection(db, 'contracts'), where('userId', '==', userId));
     const unsubscribe = onSnapshot(qContracts, (snap) => {
@@ -36,11 +66,80 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
       setLoading(false);
     }, (err) => {
       console.error("Repository listener bound error:", err);
-      setLoading(false);
+      if (isQuotaError(err)) {
+        triggerQuotaFallback();
+      } else {
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();
   }, [userId]);
+
+  const groupedAgreementTypes = {
+    "Maritime Logistics & Sea Trade": [
+      "Charter Agreement", "Bareboat Charter Agreement", "Crewed Charter Agreement", "Time Charter Party Agreement", "Voyage Charter Party Agreement", "Bill of Lading (B/L) Contract", "Marine Freight Logistics Agreement", "Ocean Towage & Salvage Contract", "Vessel Brokerage & Cargo Agency"
+    ],
+    "Marine Shipyard & Refit Services": [
+      "Shipbuilding Contract", "New Build Agreement", "Shipyard Refit & Retrofit Agreement", "Dry Docking Services Agreement", "Marine Engineering & Technical Services", "Vessel Maintenance & Repair (M&R)", "Equipment Supply & OEM Production"
+    ],
+    "Marina, Berthing & Port Operations": [
+      "Berthing Lease Agreement", "Marina Services Agreement", "Port Agency & Stevedoring Agreement", "Wharfage & Cargo Handling Agreement", "Operational Support Agreement"
+    ],
+    "Vessel Ownership & Management": [
+      "Vessel Sale & Purchase (S&P) Agreement", "Yacht Sale & Purchase Agreement", "Memorandum of Agreement (MOA)", "Sea Trial & Pre-Purchase Agreement", "Vessel Management Agreement (SHIPMAN)", "Technical & Fleet Management Agreement"
+    ],
+    "Marine Legal, HR & Advisory": [
+      "Crew Employment Agreement (SEA)", "Captain Employment Agreement", "Crew Management & Crewing Services", "Marine Insurance Placement Contract", "Maritime Legal Advisory & Representation", "Condition & Pre-Purchase Survey Agreement"
+    ],
+    "Technology & Marine AI": [
+      "Software Licensing & Vessel IoT SaaS", "API Access & Telematics Data Sharing", "Marine Cybersecurity Audit Services", "AI Navigation Consulting Agreement"
+    ]
+  };
+
+  const groupedTransactionTypes = {
+    "Logistics & Sea Operations": [
+      "Yacht Charter", "Bareboat Charter", "Crewed Charter", "Day Charter", "Seasonal Charter", "Charter Management", "Voyage Chartering", "Time Chartering", "Cargo Carriage"
+    ],
+    "Shipyard & Services": [
+      "New Build Fabrication", "Refit Services", "Retrofit Engineering", "Manufacturing", "Equipment Supply", "Spare Parts Supply", "OEM Production", "Engineering Services", "Commissioning Services", "Warranty Services"
+    ],
+    "Marina & Port": [
+      "Berthing Space Rental", "Marina Services", "Technical Services", "Port Agency Services", "Vessel Management", "Annual Maintenance", "Dry Dock Services", "Stevedoring Operations"
+    ],
+    "Legal & Advisory": [
+      "Maritime Legal Advisory", "Due Diligence Audits", "Vessel Certification", "Compliance Review", "Insurance Placement", "Settlement Routing", "Vessel Financing Support"
+    ],
+    "Marine Technology & AI": [
+      "Software Licensing", "SaaS Subscription", "API Access Billing", "Digital Integration", "Cybersecurity Auditing", "Marine AI Consulting"
+    ]
+  };
+
+  const getContractCategory = (type: string) => {
+    for (const [key, values] of Object.entries(groupedAgreementTypes)) {
+      if (values.includes(type)) return key;
+    }
+    return 'Other';
+  };
+
+  const getContractSector = (c: SaaSContract) => {
+    for (const [key, values] of Object.entries(groupedTransactionTypes)) {
+      if (values.includes(c.transactionType)) return key;
+    }
+    return 'Other';
+  };
+
+  const matchValue = (valStr: any, range: string) => {
+    if (range === 'ALL') return true;
+    const val = parseFloat((valStr || '').toString().replace(/,/g, ''));
+    if (isNaN(val)) return true;
+
+    if (range === 'UNDER_100K') return val < 100000;
+    if (range === '100K_1M') return val >= 100000 && val <= 1000000;
+    if (range === '1M_5M') return val > 1000000 && val <= 5000000;
+    if (range === 'OVER_5M') return val > 5000000;
+    return true;
+  };
 
   const normalizeStatus = (status: string) => {
     if (!status) return 'Draft';
@@ -98,10 +197,25 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
   const filteredContracts = contracts
     .filter(c => {
       if (c.userId !== userId) return false;
-      const matchSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.agreementType.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = (c.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (c.agreementType || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchStatus = selectedStatus === 'ALL' || normalizeStatus(c.status) === selectedStatus;
-      return matchSearch && matchStatus;
+      
+      const category = getContractCategory(c.agreementType);
+      const matchCat = selectedCategory === 'ALL' || category === selectedCategory;
+
+      const sector = getContractSector(c);
+      const matchSec = selectedSector === 'ALL' || sector === selectedSector;
+
+      const matchVal = matchValue(c.contractValue, selectedValueRange);
+      
+      const matchCurr = selectedCurrency === 'ALL' || c.currency === selectedCurrency;
+      
+      const matchRisk = selectedRiskScore === 'ALL' || c.riskScore === selectedRiskScore;
+      
+      const matchLaw = selectedLaw === 'ALL' || c.applicableLaw === selectedLaw;
+
+      return matchSearch && matchStatus && matchCat && matchSec && matchVal && matchCurr && matchRisk && matchLaw;
     })
     .sort((a, b) => {
       let valA = a[sortBy] || '';
@@ -143,38 +257,141 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
       </div>
 
       {/* Filter and Search Bar Row */}
-      <div className="bg-[#202636] p-4 rounded-xl border border-[#2B3347] mb-6 flex flex-col md:flex-row gap-4 items-stretch md:items-center">
-        {/* Search */}
-        <div className="relative flex-1">
+      <div className="bg-[#202636] p-5 rounded-xl border border-[#2B3347] mb-6 space-y-4">
+        {/* Search Input */}
+        <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
             <Search size={16} />
           </span>
           <input
             type="text"
-            placeholder="Search agreement titles, vessel names..."
+            placeholder="Search agreement titles, vessel names, counterparties..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full pl-9 pr-3 py-2.5 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B]"
+            className="block w-full pl-9 pr-3 py-2.5 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] placeholder-[#80868B] font-medium text-left"
           />
         </div>
 
-        {/* Status Dropdown */}
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] text-[#80868B] font-mono whitespace-nowrap">Status:</span>
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="flex-1 md:flex-none px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] min-w-[140px]"
-          >
-            <option value="ALL">All Envelopes</option>
-            <option value="Draft">Drafts</option>
-            <option value="Review">In Review</option>
-            <option value="Approval">Awaiting Approval</option>
-            <option value="Executed">Executed signatures</option>
-            <option value="Expired">Expired</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Archived">Archived</option>
-          </select>
+        {/* Multi-Filters Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {/* Status Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Envelope State</span>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All States</option>
+              <option value="Draft">Drafts</option>
+              <option value="Review">In Review</option>
+              <option value="Approval">Awaiting Approval</option>
+              <option value="Executed">Executed Signatures</option>
+              <option value="Expired">Expired</option>
+              <option value="Cancelled">Cancelled</option>
+              <option value="Archived">Archived</option>
+            </select>
+          </div>
+
+          {/* Category Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Agreement Category</span>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Categories</option>
+              {Object.keys(groupedAgreementTypes).map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Transaction Sector Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Transaction Sector</span>
+            <select
+              value={selectedSector}
+              onChange={(e) => setSelectedSector(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Sectors</option>
+              {Object.keys(groupedTransactionTypes).map(sector => (
+                <option key={sector} value={sector}>{sector}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Value Range Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Valuation Range</span>
+            <select
+              value={selectedValueRange}
+              onChange={(e) => setSelectedValueRange(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Valuations</option>
+              <option value="UNDER_100K">Under 100,000</option>
+              <option value="100K_1M">100,000 - 1,000,000</option>
+              <option value="1M_5M">1,000,000 - 5,000,000</option>
+              <option value="OVER_5M">Over 5,000,000</option>
+            </select>
+          </div>
+
+          {/* Currency Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Currency</span>
+            <select
+              value={selectedCurrency}
+              onChange={(e) => setSelectedCurrency(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Currencies</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="SGD">SGD</option>
+              <option value="AED">AED</option>
+              <option value="CHF">CHF</option>
+              <option value="TRY">TRY</option>
+            </select>
+          </div>
+
+          {/* Applicable Law Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Applicable Law</span>
+            <select
+              value={selectedLaw}
+              onChange={(e) => setSelectedLaw(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Laws</option>
+              <option value="English Law (LMAA)">English Law</option>
+              <option value="Singapore Law (SCMA)">Singapore Law</option>
+              <option value="New York State Law (SMA)">New York Law</option>
+              <option value="Swiss Law">Swiss Law</option>
+              <option value="French Law">French Law</option>
+              <option value="German Law">German Law</option>
+              <option value="UAE Law (DIFC)">UAE Law (DIFC)</option>
+              <option value="Turkish Law">Turkish Law</option>
+            </select>
+          </div>
+
+          {/* Risk Score Select */}
+          <div className="space-y-1.5 text-left">
+            <span className="text-[9px] text-[#80868B] uppercase tracking-wider font-mono block font-bold">Risk Level</span>
+            <select
+              value={selectedRiskScore}
+              onChange={(e) => setSelectedRiskScore(e.target.value)}
+              className="w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-medium"
+            >
+              <option value="ALL">All Risks</option>
+              <option value="Low">Low Risk</option>
+              <option value="Medium">Medium Risk</option>
+              <option value="High">High Risk</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -282,10 +499,18 @@ export default function RepositoryView({ userId, onOpenContract, onNavigateTab }
                             <div className="text-left max-w-4xl grid md:grid-cols-3 gap-6">
                               <div>
                                 <h5 className="text-[10px] font-bold text-[#00D4FF] uppercase tracking-wider mb-2 font-mono">Bilateral Corporate Keys</h5>
-                                <div className="space-y-2 bg-[#171B26] p-3 rounded border border-[#2B3347] text-[11px]">
-                                  <p className="text-[#BBC0C4]"><b>Seller (Party A):</b> <br /><span className="text-white font-semibold">{c.seller}</span></p>
-                                  <div className="border-t border-[#2B3347] my-2"></div>
-                                  <p className="text-[#BBC0C4]"><b>Buyer (Party B):</b> <br /><span className="text-white font-semibold">{c.buyer}</span></p>
+                                <div className="space-y-3 bg-[#171B26] p-3 rounded border border-[#2B3347] text-[11px]">
+                                  <div>
+                                    <p className="text-[#80868B] text-[9px] uppercase font-mono tracking-wider font-bold">Party A</p>
+                                    <p className="text-white font-semibold text-xs mt-0.5">{c.seller}</p>
+                                    <p className="text-[#00D4FF] text-[10px] font-mono mt-1 uppercase">Role: {c.partyA?.role || 'Seller'}</p>
+                                  </div>
+                                  <div className="border-t border-[#2B3347]/50 my-2"></div>
+                                  <div>
+                                    <p className="text-[#80868B] text-[9px] uppercase font-mono tracking-wider font-bold">Party B</p>
+                                    <p className="text-white font-semibold text-xs mt-0.5">{c.buyer}</p>
+                                    <p className="text-[#00D4FF] text-[10px] font-mono mt-1 uppercase">Role: {c.partyB?.role || 'Buyer'}</p>
+                                  </div>
                                 </div>
                               </div>
                               <div className="md:col-span-2 flex flex-col justify-between">

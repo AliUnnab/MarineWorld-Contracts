@@ -3,6 +3,8 @@ import { db, logAuditEvent } from '../../services/firebase-service';
 import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { auth } from '../../services/firebase-service';
 import { signOut } from 'firebase/auth';
+import PaymentModal from './PaymentModal';
+import { StripeService } from '../services/stripe-service';
 
 interface OnboardingPricingProps {
   userId: string;
@@ -12,13 +14,17 @@ interface OnboardingPricingProps {
 
 export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }: OnboardingPricingProps) {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const plans = [
     {
       id: 'Starter',
-      price: 29,
+      priceMonthly: 29,
+      priceAnnual: 24, // equivalent monthly
+      totalAnnualPrice: 290,
       subtitle: 'For Independent Maritime Professionals',
       credits: 500,
       desc: 'Ideal for consultants, surveyors, brokers and independent maritime service providers.',
@@ -26,7 +32,9 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
     },
     {
       id: 'Professional',
-      price: 99,
+      priceMonthly: 99,
+      priceAnnual: 82, // equivalent monthly
+      totalAnnualPrice: 990,
       subtitle: 'For Maritime Companies',
       credits: 2500,
       isPopular: true,
@@ -35,7 +43,9 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
     },
     {
       id: 'Enterprise',
-      price: 299,
+      priceMonthly: 299,
+      priceAnnual: 249, // equivalent monthly
+      totalAnnualPrice: 2990,
       subtitle: 'For Shipyards, Fleet Operators & Corporate Groups',
       credits: 10000,
       desc: 'Designed for organizations managing high-volume maritime contract operations.',
@@ -43,124 +53,46 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
     }
   ];
 
-  const handleCreateStripeSession = async (planId: string, priceAmount: number) => {
+  const processPayment = async (planId: string, priceAmount: number) => {
     setLoading(true);
-    setSuccessMsg("Initializing secure billing checkout...");
+    setSuccessMsg("Redirecting to secure payment environment...");
     
     try {
-      // Before redirecting to Stripe, optimistically provision the workspace structure
-      // Wait for it to finish so that on successful return, the workspace is ready
       const planInfo = plans.find(p => p.id === planId);
-      if (planInfo) {
-          await setDoc(doc(db, 'subscriptions', userId), {
-            id: userId,
-            userId: userId,
-            plan: planInfo.id,
-            amount: planInfo.price,
-            status: 'pending_payment',
-            billingCycle: 'Monthly',
-            currentPeriodStart: new Date().toISOString(),
-            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-          }, { merge: true });
+      if (!planInfo) throw new Error("Plan not found");
 
-          await setDoc(doc(db, 'users', userId), { planId: planInfo.id }, { merge: true });
-
-          try {
-            await logAuditEvent(userId, `Initiated Stripe payment for ${planInfo.id} plan subscription`, "Billing & Subscription");
-          } catch (logErr) {
-            console.error("Subscription payment log failed:", logErr);
-          }
-      }
-      
+      // Request Stripe Checkout Session from our express backend
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          planId,
-          priceAmount,
-          userId,
-          customerEmail: auth.currentUser?.email || '',
+          planId: planId,
+          priceAmount: priceAmount,
+          userId: userId,
+          customerEmail: auth.currentUser?.email || "",
+          mode: 'subscription',
+          billingCycle: billingCycle,
+          successPath: '/dashboard'
         })
       });
-      
+
       const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to initialize checkout');
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || "Failed to create secure payment session.");
       }
-      
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error('No checkout URL returned');
-      }
+
+      // Redirect browser directly to Stripe-hosted checkout
+      window.location.href = data.url;
     } catch (err: any) {
-      console.error("Checkout session failed:", err);
-      // Fallback: If Stripe is not configured or fails, we mock success redirect
-      console.warn("Falling back to local provisioning since Stripe setup failed.");
-      try {
-        const planInfo = plans.find(p => p.id === planId);
-        
-        await setDoc(doc(db, 'subscriptions', userId), {
-          status: 'active',
-          plan: planId,
-          amount: priceAmount,
-          billingCycle: 'Monthly',
-          currentPeriodStart: new Date().toISOString(),
-          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        }, { merge: true });
-
-        await setDoc(doc(db, 'users', userId), { planId: planId }, { merge: true });
-
-        if (planInfo) {
-          await setDoc(doc(db, 'credit_wallets', userId), {
-            id: userId,
-            userId: userId,
-            creditsTotal: planInfo.credits,
-            creditsRemaining: planInfo.credits,
-            creditsUsed: 0,
-            autoRecharge: false,
-            rechargeThreshold: 200,
-            rechargeAmount: 500
-          }, { merge: true });
-
-          await addDoc(collection(db, 'invoices'), {
-            userId: userId,
-            invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
-            amount: `$${planInfo.price}.00`,
-            status: 'paid',
-            date: new Date().toISOString(),
-            plan: `${planInfo.id} Plan Subscription`,
-            description: `B2B ${planInfo.id} Subscription Activation`,
-            downloadUrl: '#'
-          });
-
-          await addDoc(collection(db, 'credit_transactions'), {
-            userId: userId,
-            date: new Date().toISOString().split('T')[0],
-            packet: `${planInfo.id} Subscription Starting Grant`,
-            changeCredits: planInfo.credits,
-            price: `$${planInfo.price}.00`,
-            timestamp: serverTimestamp()
-          });
-
-          try {
-            await logAuditEvent(userId, `Local Subscription Provisioning: ${planInfo.id} Plan Activated (+${planInfo.credits} Credits)`, "Billing & Subscription");
-          } catch (logErr) {
-            console.error("Local provisioning audit log failed:", logErr);
-          }
-        }
-      } catch (dbErr) {
-        console.error("Failed to update subscription status to active in fallback:", dbErr);
-      }
-      setTimeout(() => {
-        onPaymentSuccess();
-      }, 1000);
+      console.error("Payment processing failed:", err);
+      alert("Payment processing failed: " + err.message);
+      setLoading(false);
     }
   };
 
   const handleLogout = async () => {
     try {
+      window.sessionStorage.setItem('is_signing_out', 'true');
       await signOut(auth);
     } catch (err) {
       console.error("Logout failed:", err);
@@ -169,88 +101,134 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
     }
   };
 
+  const getPlanPrice = (plan: typeof plans[0]) => {
+    return billingCycle === 'annual' ? plan.priceAnnual : plan.priceMonthly;
+  };
+
+  const getPlanChargePrice = (plan: typeof plans[0]) => {
+    return billingCycle === 'annual' ? plan.totalAnnualPrice : plan.priceMonthly;
+  };
+
   return (
     <div className="min-h-screen bg-[#171B26] text-[#E8EAED] flex flex-col items-center p-6 md:p-12 font-sans">
       
-      <div className="w-full max-w-5xl mb-10 flex flex-col md:flex-row justify-between items-start gap-6">
+      <div className="w-full max-w-5xl mb-8 flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="max-w-3xl">
-          <h1 className="text-xl font-manrope font-semibold tracking-tight text-white mb-3 uppercase">Select Workspace Plan</h1>
-          <p className="text-[#BBC0C4] leading-relaxed max-w-2xl text-xs mb-2">
+          <h1 className="text-lg font-manrope font-semibold tracking-tight text-white mb-2 uppercase">Select Workspace Plan</h1>
+          <p className="text-[#BBC0C4] leading-relaxed max-w-2xl text-[11px] mb-1 font-mono">
             Activate a Maritime Contract Studio workspace and choose the operational capacity that best matches your organization's contract management requirements.
           </p>
-          <p className="text-[#BBC0C4] leading-relaxed max-w-2xl text-xs">
-            All plans include secure workspace access, contract repository management, version control, audit traceability and operational workflow capabilities.
+          <p className="text-[#BBC0C4] leading-relaxed max-w-2xl text-[11px] font-mono">
+            All plans include secure workspace access, contract repository management, version control, audit traceability and operational workflows.
           </p>
         </div>
         <button 
           onClick={handleLogout}
-          className="text-[10px] font-bold text-[#BBC0C4] hover:text-white flex items-center transition-colors bg-[#202636] px-4 py-2 border border-[#2B3347] hover:border-[#00D4FF]/30 rounded uppercase tracking-wider"
+          className="text-[9px] font-bold text-[#BBC0C4] hover:text-white flex items-center transition-colors bg-[#202636] px-3.5 py-1.5 border border-[#2B3347] hover:border-[#00D4FF]/30 rounded uppercase tracking-wider font-mono"
         >
           Logout
         </button>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 w-full max-w-5xl mb-8">
-        {plans.map((plan) => (
-          <div 
-            key={plan.id}
-            onClick={() => setSelectedPlan(plan.id)}
-            className={`relative bg-[#202636] border cursor-pointer transition-all rounded p-4 flex flex-col ${
-              selectedPlan === plan.id 
-                ? 'border-[#00D4FF] shadow-[0_0_15px_rgba(0,212,255,0.1)]' 
-                : 'border-[#2B3347] hover:border-[#00D4FF]/50 hover:bg-[#2B3347]'
+      {/* Billing Cycle Toggle */}
+      <div className="flex justify-center mb-8">
+        <div className="bg-[#202636] p-1 rounded-lg border border-[#2B3347] inline-flex">
+          <button
+            onClick={() => setBillingCycle('monthly')}
+            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest font-mono transition-all ${
+              billingCycle === 'monthly' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
             }`}
           >
-            <div className="mb-3">
-              <div className="flex justify-between items-start">
-                <h3 className="font-manrope font-semibold text-sm text-white uppercase tracking-wide">{plan.id}</h3>
-                {plan.isPopular && (
-                  <span className="text-[8px] bg-[#00D4FF]/10 text-[#00D4FF] px-1.5 py-0.5 rounded border border-[#00D4FF]/20 font-bold uppercase">Popular</span>
-                )}
+            Monthly
+          </button>
+          <button
+            onClick={() => setBillingCycle('annual')}
+            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-1.5 ${
+              billingCycle === 'annual' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
+            }`}
+          >
+            Annual <span className="text-[8px] bg-black/25 px-1.5 py-0.5 rounded text-inherit">Save ~2 Months</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Grid: 3 columns, more compact and "uygun ölçüde" */}
+      <div className="grid md:grid-cols-3 gap-4 w-full max-w-5xl mb-8">
+        {plans.map((plan) => {
+          const displayPrice = getPlanPrice(plan);
+          const isSelected = selectedPlan === plan.id;
+
+          return (
+            <div 
+              key={plan.id}
+              onClick={() => setSelectedPlan(plan.id)}
+              className={`relative bg-[#202636] border cursor-pointer transition-all rounded-lg p-4 flex flex-col justify-between min-h-[350px] ${
+                isSelected 
+                  ? 'border-[#00D4FF] shadow-[0_0_12px_rgba(0,212,255,0.08)] bg-[#242B3A]' 
+                  : 'border-[#2B3347] hover:border-[#00D4FF]/30 hover:bg-[#2B3347]'
+              }`}
+            >
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-manrope font-semibold text-sm text-white uppercase tracking-wide">{plan.id}</h3>
+                  {plan.isPopular && (
+                    <span className="text-[7px] bg-[#00D4FF]/10 text-[#00D4FF] px-1.5 py-0.5 rounded border border-[#00D4FF]/20 font-bold uppercase tracking-wider font-mono">Popular</span>
+                  )}
+                </div>
+                <p className="text-[9px] text-[#BBC0C4] font-medium leading-normal min-h-[28px] uppercase font-mono">{plan.subtitle}</p>
+
+                <div className="my-3 border-b border-[#2B3347] pb-3">
+                  <div className="flex items-baseline">
+                    <span className="text-2xl font-extrabold text-white font-mono">${displayPrice}</span>
+                    <span className="text-[9px] text-[#80868B] ml-1 uppercase font-mono">/ Month</span>
+                  </div>
+                  {billingCycle === 'annual' && (
+                    <p className="text-[8px] text-[#00D68F] uppercase tracking-wider font-mono mt-0.5">Billed ${plan.totalAnnualPrice} / year</p>
+                  )}
+                </div>
+
+                <div className="mb-4">
+                  <p className="text-[8px] font-bold text-[#80868B] uppercase mb-2 tracking-wider font-mono">Included Features:</p>
+                  <ul className="space-y-1.5">
+                    {plan.features.slice(0, 5).map((feature, i) => (
+                      <li key={i} className="flex items-start text-[10px] text-[#BBC0C4] before:content-['•'] before:mr-2 before:text-[#00D4FF]">
+                        <span className="leading-tight uppercase tracking-tight font-mono">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-              <p className="text-[10px] text-[#BBC0C4] mt-1 font-medium min-h-[30px] leading-tight">{plan.subtitle}</p>
+              
+              <div className="pt-3 border-t border-[#2B3347] mt-auto">
+                <p className="text-[8px] text-[#80868B] leading-normal uppercase tracking-wider font-mono">
+                  {plan.desc}
+                </p>
+              </div>
             </div>
-            
-            <div className="mb-4 border-b border-[#2B3347] pb-4 flex items-baseline">
-              <span className="text-xl font-bold text-white">${plan.price}</span>
-              <span className="text-[9px] text-[#80868B] ml-1 uppercase font-mono">/ Month</span>
-            </div>
-            
-            <div className="mb-4 flex-1">
-              <p className="text-[9px] font-bold text-[#80868B] uppercase mb-2 tracking-wider font-mono">Core Capacity:</p>
-              <ul className="space-y-1.5">
-                {plan.features.slice(0, 4).map((feature, i) => (
-                  <li key={i} className="flex items-start text-[10px] text-[#BBC0C4] before:content-['•'] before:mr-2 before:text-[#00D4FF]">
-                    <span className="leading-tight uppercase tracking-tighter">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            
-            <p className="text-[8px] text-[#80868B] leading-relaxed pt-3 border-t border-[#2B3347] mt-auto uppercase tracking-tighter font-mono">
-              {plan.desc}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {selectedPlan && (
-        <div className="bg-[#202636] border border-[#2B3347] p-5 w-full max-w-5xl rounded animate-in fade-in slide-in-from-bottom-4 mb-4">
-          <div className="mb-5 border-b border-[#2B3347] pb-5">
-            <p className="text-[10px] text-[#80868B] font-bold uppercase tracking-wider mb-2">Selected Plan</p>
+        <div className="bg-[#202636] border border-[#2B3347] p-5 w-full max-w-5xl rounded-lg animate-in fade-in slide-in-from-bottom-3 mb-4" translate="no">
+          <div className="mb-4 border-b border-[#2B3347] pb-4">
+            <p className="text-[9px] text-[#80868B] font-bold uppercase tracking-wider mb-1 font-mono">Selected Plan Summary</p>
             <div className="flex justify-between items-end">
-              <h3 className="text-lg font-manrope font-semibold text-white">{selectedPlan} Workspace</h3>
-              <div className="text-base font-bold text-white">
-                 ${plans.find(p => p.id === selectedPlan)?.price}<span className="text-xs font-normal text-[#80868B]">/month</span>
+              <h3 className="text-md font-manrope font-semibold text-white uppercase">
+                <span>{selectedPlan} Workspace ({billingCycle === 'annual' ? 'Annual' : 'Monthly'})</span>
+              </h3>
+              <div className="text-lg font-bold text-white font-mono">
+                 <span>${billingCycle === 'annual' ? plans.find(p => p.id === selectedPlan)?.totalAnnualPrice : plans.find(p => p.id === selectedPlan)?.priceMonthly}</span>
+                 <span className="text-xs font-normal text-[#80868B]">/{billingCycle === 'annual' ? 'year' : 'month'}</span>
               </div>
             </div>
           </div>
           
           <div className="mb-5">
-             <p className="text-[10px] font-bold text-[#80868B] uppercase mb-3 tracking-wider">Included Capacity:</p>
-             <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-4">
+             <p className="text-[9px] font-bold text-[#80868B] uppercase mb-2 tracking-wider font-mono">Full Features & Capacity Included:</p>
+             <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-1.5 gap-x-4">
                 {plans.find(p => p.id === selectedPlan)?.features?.map((feature, i) => (
-                    <li key={i} className="text-xs text-[#BBC0C4] before:content-['•'] before:mr-2 before:text-[#80868B]">
+                    <li key={i} className="text-[10px] text-[#BBC0C4] before:content-['•'] before:mr-2 before:text-[#80868B] font-mono uppercase tracking-tight">
                       {feature}
                     </li>
                 ))}
@@ -258,19 +236,26 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
           </div>
           
           <button 
-            onClick={() => handleCreateStripeSession(selectedPlan, plans.find(p => p.id === selectedPlan)?.price || 0)}
+            onClick={() => {
+              const plan = plans.find(p => p.id === selectedPlan);
+              if (plan) {
+                const price = getPlanChargePrice(plan);
+                processPayment(selectedPlan, price);
+              }
+            }}
             disabled={loading}
-            className="w-full flex justify-center py-4 px-4 font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] transition-colors uppercase tracking-wider text-sm rounded"
+            className="w-full flex justify-center py-3.5 px-4 font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] transition-colors uppercase tracking-widest text-xs rounded font-mono"
           >
-            ACTIVATE WORKSPACE SUBSCRIPTION
+            <span>{loading ? "PROCESSING..." : "ACTIVATE WORKSPACE SUBSCRIPTION"}</span>
           </button>
           
-          <p className="text-[10px] text-center mt-6 text-[#80868B] uppercase tracking-wider leading-relaxed">
+          <p className="text-[9px] text-center mt-4 text-[#80868B] uppercase tracking-wider leading-relaxed font-mono">
             Your workspace subscription will be activated after secure payment authorization.<br/>
             You will be redirected to the billing environment to complete subscription setup and workspace provisioning.
           </p>
         </div>
       )}
+
     </div>
   );
 }

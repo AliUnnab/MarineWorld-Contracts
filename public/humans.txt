@@ -1,0 +1,11 @@
+/* SITE */
+  Last update: 2026-07-02
+  Standards: HTML5, CSS3, ESNext, WebP, SVG, WAI-ARIA
+  Components: React, TypeScript, Vite, Tailwind CSS, Lucide Icons, Zustand
+  Backend: Firebase v9 SDK, Cloud Firestore, Firebase Auth, Stripe Checkout, Node.js
+
+/* TECHNOLOGY COLOPHON */
+  Hosting: Firebase Secure Hosting
+  Database: Cloud Firestore (Multi-region distributed)
+  Signatures: Client-side SHA-256 Web Crypto API
+  Security: Content Security Policy, HSTS, AES-256 encrypt-at-rest

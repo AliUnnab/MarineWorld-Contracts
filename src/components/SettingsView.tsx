@@ -327,9 +327,33 @@ export default function SettingsView({ userId }: SettingsViewProps) {
               <label className="block text-[9px] text-[#80868B] uppercase font-bold font-mono mb-2">Governing Law (Default)</label>
               <select className="block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#00D4FF] font-bold uppercase font-mono">
                 <option>English Law (LMAA)</option>
-                <option>New York State Law</option>
-                <option>Singapore Maritime Law</option>
-                <option>Hong Kong SAR Law</option>
+                <option>Singapore Maritime Law (SCMA)</option>
+                <option>New York State Law (SMA)</option>
+                <option>Hong Kong SAR Law (HKMAG)</option>
+                <option>Panama Maritime Law</option>
+                <option>Marshall Islands Law</option>
+                <option>Liberian Maritime Law</option>
+                <option>Maltese Maritime Law</option>
+                <option>Greek Maritime Law (Piraeus)</option>
+                <option>Dutch Maritime Law (Rotterdam)</option>
+                <option>German Maritime Law (Hamburg)</option>
+                <option>Norwegian Maritime Law (Oslo)</option>
+                <option>Danish Maritime Law (Copenhagen)</option>
+                <option>Swedish Maritime Law</option>
+                <option>UAE Maritime Law (DIFC / EMAC)</option>
+                <option>Turkish Maritime Law</option>
+                <option>Swiss Law</option>
+                <option>French Maritime Law (CAMP)</option>
+                <option>Italian Maritime Law</option>
+                <option>Spanish Maritime Law</option>
+                <option>Japanese Maritime Law (TOMAC)</option>
+                <option>Chinese Maritime Law (CMAC)</option>
+                <option>Australian Maritime Law (AMLA)</option>
+                <option>Canadian Maritime Law</option>
+                <option>Brazilian Maritime Law</option>
+                <option>South African Maritime Law</option>
+                <option>Cyprus Maritime Law</option>
+                <option>Bahamas Maritime Law</option>
               </select>
             </div>
             <div>

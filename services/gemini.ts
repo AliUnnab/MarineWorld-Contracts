@@ -51,7 +51,7 @@ export async function chatWithContractAdvisor(
 
 3. Participants (Ek Katılımcılar):
    ${contractState.participants && contractState.participants.length > 0 
-     ? contractState.participants.map((p, i) => `${i+1}. ${p.name} (${p.role}) - İletişim: ${p.contact}`).join("\n")
+     ? contractState.participants.map((p, i) => `${i+1}. ${p.name} (${p.role}) - İletişim: ${p.contact}`).join("\\n")
      : "Ek katılımcı eklenmedi."}
 
 4. Deliverables & Technical Scope (Teslimatlar & Teknik Kapsam):
@@ -100,90 +100,75 @@ export async function chatWithContractAdvisor(
     - Cryptographic Audit Trail: ${contractState.contractFields.auditTrail || "Boş"}
 `;
 
-    const systemInstruction = `MARITIME CONTRACT INTELLIGENCE
-Real-Time Commercial Risk, Contract Structure, Jurisdiction and Compliance Analysis Engine
+    const systemInstruction = `CONTRACT AI ADVISOR
+MarineWorld Contract Studio Real-Time Drafting & Intelligence Engine
 
 SYSTEM ROLE
-Maritime Contract Intelligence is a professional contract intelligence engine embedded within the MarineWorld Contract Studio ecosystem.
-It is not a chatbot. It is not a virtual assistant. It is not a law firm. It does not provide legal advice.
-Its purpose is to continuously analyze commercial agreements, identify risks, monitor contract completeness, evaluate jurisdictional consistency, assess commercial logic, and support professional contract preparation throughout the entire contract lifecycle.
+You are the "Contract AI Advisor", a highly specialized legal drafting assistant embedded within the Contract Studio.
+You possess absolute mastery over all global commercial, technology, maritime, and corporate agreement types.
 
-CORE OPERATING PRINCIPLES
-1. Continuously maintain full awareness of all contract stages and all contract data currently entered by the user.
-2. Automatically understand the active contract stage without requiring user explanation.
-3. Continuously analyze all contract information in real time as the user edits the agreement.
-4. Adapt observations and recommendations according to the active contract stage.
-5. Never introduce conversational behavior. Never introduce unnecessary greetings. Never claim expertise or legal authority. Never recommend legal action.
-6. Remain neutral, factual, objective, and commercially focused.
-7. Reply in Turkish if the user's query is in Turkish, otherwise reply in English. Avoid any friendly chit-chat or generic AI disclaimers.
+# CONTRACT AI ADVISOR — Analysis Modal Standard
 
-CONTRACT OF INTEREST DRAFT STATE (Observe carefully):
+## Purpose
+Analyze only the currently selected contract.
+Base every statement exclusively on the content contained within the uploaded or generated contract.
+Do not infer, speculate, assume, fabricate or complete missing information.
+If information is absent, clearly state that it is not present in the contract.
+
+## Analysis Principles
+* Analyze the entire contract before generating any response.
+* Evaluate every clause within the full contractual context.
+* Reference only information explicitly contained in the contract.
+* Never provide legal advice, legal opinion, legal representation or professional legal services.
+* Never recommend legal actions.
+* Never rewrite contractual obligations unless specifically requested.
+* Never invent clauses, dates, parties, obligations or legal interpretations.
+* Maintain complete neutrality.
+* Produce concise, structured and verifiable findings.
+* "When information cannot be verified directly from the contract, respond with 'Information not available in the analyzed contract.' Never infer or generate missing contractual content."
+
+## Standard Output Layout (USE THIS FORMAT FOR ANALYSIS REPORTS)
+### Analysis Header
+Analysis Type: [Type of Analysis]
+Analysis Date: [Current Date]
+Contract Version: Draft
+Processing Status: Complete
+
+### Executive Result
+Provide a concise summary (maximum 5 paragraphs). Describe only findings supported by the contract. Avoid assumptions.
+
+### Findings
+Present findings using numbered sections. Each finding should contain:
+- Section Reference
+- Finding
+- Explanation
+- Potential Operational Impact
+- Recommended Refinement (How to structurally fix this within the platform)
+
+### Observations
+Identify areas that deserve attention. If no issue exists, explicitly state: "No relevant observations identified."
+
+### Missing Information
+Identify information that is expected but not found. Do not assume missing values. Instead state: "Information not found within the analyzed contract."
+
+### Confidence
+[High / Medium / Limited] (Confidence should reflect only document completeness. Never estimate legal certainty.)
+
+### Final Statement
+This analysis is generated exclusively from the contents of the analyzed contract. It does not constitute legal advice, legal opinion or legal representation.
+
+## Writing Style
+Professional, Objective, Neutral, Evidence-based. No marketing, persuasive, or emotional language. No speculation, hallucinations, assumptions, or fabricated facts. Every statement must be traceable to the analyzed contract. Use advanced Markdown formatting.
+
+CONTRACT OF INTEREST DRAFT STATE:
 ${stateString}
 
 ACTIVE FORM STAGE: [${activeSection}]
 
-COMPLIANCE FRAMEWORKS:
-International Commercial Contracting, International Maritime Commerce, Maritime Industry Standards, Incoterms 2020, LMAA Arbitration Principles, ICC Arbitration Principles, UNCITRAL Principles, Cross-Border Commercial Contracting Standards, Marine Survey Standards, Classification Society Standards, Vessel Sale and Purchase Practices, Charter Industry Practices, Refit and Shipyard Commercial Practices, Commercial Agency and Distribution Practices.
-
-SUPPORTED ANALYSIS TYPES:
-Commercial Risk Identification, Contract Completeness Analysis, Clause Consistency Analysis, Commercial Logic Validation, Contract Structure Review, Missing Clause Detection, Jurisdictional Review, Arbitration Review, Payment Risk Analysis, Execution Risk Analysis, Counterparty Verification Review, Compliance Monitoring, Contract Readiness Assessment, Commercial Terminology Validation, Maritime Terminology Validation, International Trade Terminology Validation, Contract Lifecycle Monitoring.
-
-FORBIDDEN BEHAVIOR & WORDS:
-Do NOT say or include: "Hello", "I am an expert", "I can help you", "I am your assistant", "How can I assist you", "Feel free to ask", "Contact a lawyer", "I provide legal advice", "I recommend legal action".
-
-REQUIRED OUTPUT FORMAT (You MUST format your entire response strictly following this structure. Replace placeholders inside brackets with real, high-quality, professional, objective analysis tailored to the active stage and the user's query):
-
-ACTIVE STAGE
-[Active Stage Name, e.g., ${activeSection}]
-
-CONTRACT STATUS
-Draft
-
-CONTRACT COMPLETENESS
-[Percentage based on fields filled, e.g., 87%]
-
-EXECUTION READINESS
-[Percentage based on completion status, e.g., 82%]
-
-COMMERCIAL RISK
-[Low / Medium / High]
-
-JURISDICTION RISK
-[Low / Medium / High]
-
-PAYMENT RISK
-[Low / Medium / High]
-
-COMPLIANCE STATUS
-[Aligned / Minor Deviation / Major Gaps]
-
-COUNTERPARTY VERIFICATION
-[Pending / Verified]
-
-OBSERVATIONS
-• [Professional, factual observation based on active stage and parameters]
-• [Professional, factual observation based on active stage and parameters]
-• [Professional, factual observation based on active stage and parameters]
-
-MISSING ITEMS
-• [Missing items necessary for compliance or complete documentation]
-• [Missing items necessary for compliance or complete documentation]
-
-RECOMMENDED ACTIONS
-• [Factual action 1]
-• [Factual action 2]
-• [Factual action 3]
-
-LIVE CONTRACT ANALYTICS
-Contract Completeness: [Percentage]%
-Execution Readiness: [Percentage]%
-Commercial Risk: [Risk]
-Jurisdiction Risk: [Risk]
-Payment Risk: [Risk]
-Compliance Status: [Status]
-Counterparty Verification: [Status]
-Missing Clauses: [Count]
-Suggested Improvements: [Count]`;
+When responding to the user:
+- If they ask for advice or text to use, respond directly and clearly.
+- If they request one of the standard analyses (e.g. Clause Review, Risk Detection), you MUST use the "Standard Output Layout" defined above.
+- Ensure formatting is perfectly Markdown structured for clear display.`;
 
     // Format chat history
     const formattedHistory = history.map((msg) => ({
@@ -229,12 +214,12 @@ export async function rewriteContractClauseWithAi(
 ): Promise<string> {
   if (!ai) {
     // Return fake modified string mimicking human refinement
-    return `${clauseContent}\n\n[HUMAN MANUALLY REVISED OR OFFLINE REWRITE ACCORDING TO: ${instruction}]`;
+    return `${clauseContent}\\n\\n[HUMAN MANUALLY REVISED OR OFFLINE REWRITE ACCORDING TO: ${instruction}]`;
   }
 
   try {
     const systemPrompt = `You are an elite Maritime & Trade Law expert in the MarineWorld Contract Studio.
-Your sole job is to rewrite or refine an existing contract clause based on specific user instructions.
+Your sole job is to rewrite or refine an existing contract clause based on specific user instructions. You must act as an elite drafting assistant, elevating the legal text to institutional standards.
 
 CONTEXT OF THE ENTIRE AGREEMENT:
 - Contract Type: ${contractContext.agreementType}
@@ -274,5 +259,110 @@ RULES:
   } catch (error) {
     console.warn("Error in rewriteContractClauseWithAi gracefully handled:", error);
     return clauseContent;
+  }
+}
+
+export async function chatWithContractCopilot(
+  query: string,
+  history: { role: "user" | "model"; text: string }[],
+  contractState: any
+): Promise<string> {
+  if (!ai) {
+    return "I am operating in offline mode. Please configure the Gemini API key to use Contract Copilot.";
+  }
+
+  try {
+    const clausesList = contractState.clauses?.map((c: any) => `- ${c.title} (Status: ${c.status})\\n  Content: ${c.content}`).join("\\n\\n") || "No clauses available.";
+    const participantsList = contractState.participants?.map((p: any) => `- ${p.role}: ${p.name} (${p.email})`).join("\\n") || "No other participants.";
+
+    const stateString = `
+--- CONTRACT METADATA ---
+1. Commercial Foundation:
+   - Title: ${contractState.foundation?.title || "Not specified"}
+   - Category: ${contractState.foundation?.category || "Not specified"}
+   - Type: ${contractState.foundation?.type || "Not specified"}
+   - Transaction Type: ${contractState.foundation?.transactionType || "Not specified"}
+   - Subject Matter: ${contractState.foundation?.subjectMatter || "Not specified"}
+   - Objective: ${contractState.foundation?.objective || "Not specified"}
+   - Description: ${contractState.foundation?.description || "Not specified"}
+   - Value: ${contractState.foundation?.currency || ""} ${contractState.foundation?.value || "Not specified"}
+   - Geo Scope: ${contractState.foundation?.geoScope || "Not specified"}
+   - Effective Date: ${contractState.foundation?.effectiveDate || "Not specified"}
+   - Expiration Date: ${contractState.foundation?.expirationDate || "Not specified"}
+
+2. Parties & Participants:
+   - Party A: ${contractState.partyA?.name || "Not specified"} (${contractState.partyA?.role || ""})
+   - Party B: ${contractState.partyB?.name || "Not specified"} (${contractState.partyB?.role || ""})
+   - Other Participants:
+${participantsList}
+
+3. Additional Fields & Terms:
+   - Deliverables: ${contractState.contractFields?.deliverables || "Not specified"}
+   - Commercial Terms: ${contractState.contractFields?.commercialTerms || "Not specified"}
+
+4. Jurisdiction & Compliance:
+   - Governing Law: ${contractState.jurisdiction?.law || "Not specified"}
+   - Arbitration Seat: ${contractState.jurisdiction?.seat || "Not specified"}
+   - Institution: ${contractState.jurisdiction?.institution || "Not specified"}
+   - Language: ${contractState.jurisdiction?.language || "Not specified"}
+
+5. Interactive Clause Workspace (All drafted clauses):
+${clausesList}
+
+6. Current Workspace State:
+   - Active Section: ${contractState.activeSection?.id || "Not specified"}
+   - Current Version: ${contractState.currentVersion || "Not specified"}
+   - Wizard Setup Data: ${JSON.stringify(contractState.wizardData || {})}
+`;
+
+    const systemInstruction = `CONTRACT COPILOT
+Enterprise Conversational Contract Intelligence
+
+SYSTEM ROLE
+You are "Contract Copilot", an enterprise contract co-author that understands the entire contract context and assists the user through natural conversation.
+You are a conversational AI workspace designed to accompany users throughout the entire contract drafting process.
+You are NOT a chatbot. You are NOT a clause generator (that is Contract Assistant). You are NOT a contract reviewer (that is Contract AI Advisor).
+You are a third, independent AI layer.
+
+CORE PURPOSE
+Contract Copilot assists users through conversation. Users may ask questions naturally throughout the drafting process.
+Examples: "Should this agreement include a Force Majeure clause?", "Explain this liability clause", "Suggest better payment terms".
+Provide guidance, recommendations, and strategic advisory. When the user asks you to write something, provide the text they can copy, but explain that you cannot directly inject it. 
+
+SCOPE OF AUTHORITY
+You may: Explain, Suggest, Compare, Draft, Simplify, Expand, Translate, Recommend, Educate, Identify missing information.
+You must NEVER: Automatically edit the contract, Replace approved clauses, Override user content, Perform legal representation, Present assumptions as facts, Invent contractual information.
+
+USER EXPERIENCE
+The Copilot should feel like an experienced contract professional sitting beside the user.
+Every response should be concise, context-aware and directly relevant to the active contract.
+Never ask the user to repeat contract information already available within the workspace.
+Use rich Markdown formatting (e.g. **bolding** key terms, bullet points for lists, and ### headings for sections) to make your responses highly scannable and easy to read. Do not output massive walls of text. Provide well-structured, visually appealing responses.
+
+CONTRACT STATE CONTEXT:
+${stateString}
+`;
+
+    const formattedHistory = history.map((msg) => ({
+      role: msg.role === "user" ? ("user" as const) : ("model" as const),
+      parts: [{ text: msg.text }],
+    }));
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [
+        ...formattedHistory,
+        { role: "user", parts: [{ text: query }] },
+      ],
+      config: {
+        systemInstruction: systemInstruction,
+        temperature: 0.7,
+      },
+    });
+
+    return response.text || "[ NO RESPONSE FROM COPILOT ]";
+  } catch (e) {
+    console.warn("Copilot Error gracefully handled", e);
+    return "Contract Copilot encounters an error while communicating with the AI service.";
   }
 }

@@ -1,9 +1,59 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import express from "express";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import Stripe from "stripe";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Standard dotenv load
+dotenv.config({ path: path.resolve(__dirname, ".env") });
+
+// Robust manual fallback parser to handle Windows file encoding issues (like UTF-16 LE or UTF-8 BOM)
+try {
+  const dotenvPath = path.resolve(__dirname, ".env");
+  if (fs.existsSync(dotenvPath)) {
+    let content = fs.readFileSync(dotenvPath, "utf-8");
+    
+    // Check if the content is UTF-16 LE (contains null bytes or looks like binary)
+    if (content.includes("\u0000") || (content.length > 2 && content.charCodeAt(0) === 0xff && content.charCodeAt(1) === 0xfe)) {
+      content = fs.readFileSync(dotenvPath, "utf16le");
+    }
+    
+    // Remove BOM if present
+    if (content.charCodeAt(0) === 0xfeff) {
+      content = content.slice(1);
+    }
+    
+    // Parse lines manually
+    const lines = content.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      
+      const equalIndex = trimmed.indexOf("=");
+      if (equalIndex > 0) {
+        const key = trimmed.substring(0, equalIndex).trim();
+        let value = trimmed.substring(equalIndex + 1).trim();
+        
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.substring(1, value.length - 1);
+        }
+        
+        if (key) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+} catch (err) {
+  console.error("[Stripe Config] Manual .env parse fallback error:", err);
+}
 
 const app = express();
 const PORT = 3000;
@@ -12,7 +62,17 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize Stripe if key is provided, else leave null
-const stripeKey = process.env.STRIPE_SECRET_KEY;
+const dotenvPath = path.resolve(__dirname, ".env");
+console.log(`[Stripe Config] Loading environment from: ${dotenvPath}`);
+const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.VITE_STRIPE_SECRET_KEY;
+
+if (stripeKey) {
+  console.log(`[Stripe Config] Stripe Secret Key detected (length: ${stripeKey.length}, starts with: ${stripeKey.substring(0, 7)}...)`);
+} else {
+  console.warn(`[Stripe Config] ⚠️ No Stripe Secret Key found in environment variables.`);
+  console.log(`[Stripe Config] Available Env Keys: ${Object.keys(process.env).filter(k => k.includes("STRIPE"))}`);
+}
+
 const stripe = stripeKey ? new Stripe(stripeKey, { apiVersion: "2024-06-20" as any }) : null;
 
 // ==========================================
@@ -81,7 +141,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
   if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
 
   try {
-    const { planId, priceAmount, userId, customerEmail, mode = 'subscription', successPath = '/' } = req.body;
+    const { planId, priceAmount, userId, customerEmail, mode = 'subscription', successPath = '/', billingCycle = 'monthly' } = req.body;
     const cleanPath = successPath.startsWith('/') ? successPath : `/${successPath}`;
 
     const session = await stripe.checkout.sessions.create({
@@ -95,14 +155,15 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
             description: mode === 'subscription' ? `B2B Maritime Operations Capacity (${planId} Tier)` : `Verified Credit Refill Block`,
           },
           unit_amount: Math.round(parseFloat(priceAmount.toString().replace('$', '')) * 100), // handle strings or numbers
-          ...(mode === 'subscription' ? { recurring: { interval: 'month' } } : {})
+          ...(mode === 'subscription' ? { recurring: { interval: billingCycle === 'annual' ? 'year' : 'month' } } : {})
         },
         quantity: 1,
       }],
       metadata: {
         userId,
         planId,
-        mode
+        mode,
+        billingCycle
       },
       customer_email: customerEmail,
       success_url: `${req.headers.origin}${cleanPath}?session_id={CHECKOUT_SESSION_ID}`,

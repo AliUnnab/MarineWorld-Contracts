@@ -1,2 +1,168 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
+@media print {
+  @page {
+    margin: 0; /* Handled by padding on sheets */
+    size: auto;
+  }
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  
+  html, body, #root, main, .contract-studio-wrapper, .contract-studio-wrapper *, #contract-pages-container {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+  }
+  
+  html, body, #root, main {
+    display: block !important;
+    position: static !important;
+  }
+  
+  /* Flexbox causes problems with page breaks sometimes on the main containers */
+  #contract-pages-container {
+    display: block !important;
+  }
+  
+  /* Hide all UI elements except the contract pages container */
+  body > *:not(#root) {
+    display: none !important;
+  }
+  
+  #root > *:not(main) {
+    display: none !important;
+  }
+  
+  main > div {
+    /* If there are multiple divs inside main, hide those that aren't the wrapper for contract pages */
+  }
+  
+  /* Ensure the tree up to the container is visible and not scrollable */
+  * {
+    overflow: visible !important;
+  }
+
+  .no-print, button, .sidebar-class, nav {
+    display: none !important;
+  }
+  
+  #contract-pages-container {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  
+  .contract-page-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 20mm !important; /* Proper print margins */
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    page-break-after: always;
+    break-after: page;
+    position: relative !important;
+  }
+  
+  /* Avoid page breaks inside paragraphs, headers, and list items */
+  p, h1, h2, h3, h4, h5, li, table, tr, td, th, .page-break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  
+  /* Ensure headings stick to their following paragraphs */
+  h1, h2, h3, h4, h5 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+}
+
+@media print {
+  .page-break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .page-break-after-avoid {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  .page-break-before-always {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+}
+
+.pdf-generating .page-break-inside-avoid {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+.pdf-generating .page-break-after-avoid {
+  page-break-after: avoid !important;
+  break-after: avoid !important;
+}
+.pdf-generating .page-break-before-always {
+  page-break-before: always !important;
+  break-before: page !important;
+}
+
+/* OVERRIDES FOR HTML2PDF CAPTURE TO PREVENT BLANK BLACK PAGES */
+.pdf-generating, 
+.pdf-generating body, 
+.pdf-generating html, 
+.pdf-generating #root,
+.pdf-generating #contract-pages-container {
+  background: white !important;
+  background-color: white !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.pdf-generating #contract-pages-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 794px !important;
+}
+
+.pdf-generating .contract-page-sheet {
+  margin: 0 !important;
+  padding: 24px !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  transform: none !important;
+  height: 1123px !important;
+  max-height: 1123px !important;
+  width: 794px !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  page-break-after: avoid !important;
+  break-after: auto !important;
+}
+
+.pdf-generating .contract-page-sheet:last-child {
+  page-break-after: auto !important;
+  break-after: auto !important;
+}
+
+/* Hide the wrapper padding to prevent any offsets */
+.pdf-generating > div, .pdf-generating #contract-pages-container > div {
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+
