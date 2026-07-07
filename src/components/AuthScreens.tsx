@@ -6,7 +6,7 @@ import {
   OperationType,
   logAuditEvent
 } from '../../services/firebase-service';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -25,18 +25,27 @@ import {
 } from 'lucide-react';
 
 interface AuthScreensProps {
-  initialMode: 'login' | 'register' | 'forgot-password' | 'verify-email' | '2fa';
+  initialMode: 'login' | 'register' | 'forgot-password' | 'verify-email' | '2fa' | 'reset-password';
   onNavigate: (route: string) => void;
   onLoginSuccess: (user: any) => void;
 }
 
 export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }: AuthScreensProps) {
-  const [mode, setMode] = useState(initialMode);
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot-password' | 'verify-email' | '2fa' | 'reset-password'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [mfaCode, setmfaCode] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+
+  // Temporary registration state variables for verification flow
+  const [tempRegName, setTempRegName] = useState('');
+  const [tempRegCompany, setTempRegCompany] = useState('');
+  const [tempRegEmail, setTempRegEmail] = useState('');
+  const [tempRegPassword, setTempRegPassword] = useState('');
+  const [tempRegCode, setTempRegCode] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -93,48 +102,45 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         if (!email || !password || !displayName || !companyName) {
           throw new Error("All fields (Full Name, Email, Password, Company Name) are required for B2B registration.");
         }
-        window.sessionStorage.setItem('is_registering', 'true');
-        try {
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          const signedUser = userCredential.user;
-          
-          // Update user profile display name
-          await updateProfile(signedUser, { displayName: displayName });
-          
-          // Seed database
-          try {
-            await seedUserDataIfNecessary(signedUser.uid, email, displayName, companyName);
-          } catch (seedErr: any) {
-            if (seedErr && (
-              seedErr.message?.toLowerCase().includes('quota') ||
-              seedErr.message?.toLowerCase().includes('limit') ||
-              seedErr.message?.toLowerCase().includes('resource_exhausted') ||
-              seedErr.code === 'resource-exhausted'
-            )) {
-              console.warn("Quota limit detected during user seeding. Activating offline sandbox.");
-              window.localStorage.setItem('firestore_quota_exceeded', 'true');
-              (window as any).__markQuotaExceeded?.();
-            } else {
-              throw seedErr;
-            }
-          }
-          
-          try {
-            await logAuditEvent(signedUser.uid, "User registered successfully with email: " + email, "User Session Profile");
-          } catch (logErr) {
-            console.error("Log registration audit failed:", logErr);
-          }
-          
-          setTempUser(signedUser);
-          setSuccessMsg("Enterprise Workspace initialized successfully. Magic verification link dispatched to " + email);
-          setMode('verify-email');
-        } finally {
-          window.sessionStorage.removeItem('is_registering');
+        
+        const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Save registration details to local state
+        setTempRegName(displayName);
+        setTempRegCompany(companyName);
+        setTempRegEmail(email);
+        setTempRegPassword(password);
+        setTempRegCode(generatedCode);
+
+        // Dispatch verification code via backend SMTP API
+        const response = await fetch('/api/send-verification-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code: generatedCode })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to dispatch verification email from info@unitedweb4.com.");
         }
+        
+        setSuccessMsg("Verification code dispatched to " + email + ". Please check your inbox.");
+        setMode('verify-email');
       } else if (mode === 'forgot-password') {
         if (!email) throw new Error("A valid email address is required to reset passwords.");
-        await sendPasswordResetEmail(auth, email);
-        setSuccessMsg("Cryptographic key reset instructions dispatched. Please check inbox: " + email);
+        const response = await fetch('/api/auth/request-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        if (!response.ok) {
+          let errorMsg = "Failed to dispatch password reset link.";
+          try {
+            const data = await response.json();
+            errorMsg = data.error || errorMsg;
+          } catch (e) {}
+          throw new Error(errorMsg);
+        }
+        setSuccessMsg("Restoration instructions dispatched. Please check your inbox: " + email);
       }
     } catch (error: any) {
       if (error.code === 'auth/weak-password') {
@@ -147,7 +153,7 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
         return;
       }
 
-      if (error.code === 'auth/operation-not-allowed') {
+      if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
         setErrorMsg("Email/Password authentication provider is not enabled in the Firebase console. Please enable it in the console under Authentication -> Sign-in method.");
         return;
       }
@@ -164,6 +170,59 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
     }
   };
 
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    if (!password) {
+      setErrorMsg("Please specify a new workspace passkey.");
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMsg("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+
+      if (!token) {
+        throw new Error("Invalid or missing password reset token.");
+      }
+
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
+
+      if (!response.ok) {
+        let errorMsg = "Failed to reset password.";
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch (e) {}
+        throw new Error(errorMsg);
+      }
+
+      setSuccessMsg("Workspace passkey successfully restored. Redirecting to login gateway...");
+      setTimeout(() => {
+        setMode('login');
+        onNavigate('/login');
+      }, 3000);
+    } catch (error: any) {
+      setErrorMsg(error.message || "An unexpected error occurred during password restoration.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const triggerGoogleAuth = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -172,14 +231,20 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       const result = await signInWithPopup(auth, provider);
       const googleUser = result.user;
       
-      // Verify user document existence in Firestore (Unregistered users cannot enter)
+      // Verify user document existence in Firestore (Unregistered users are automatically initialized)
       const userDocRef = doc(db, 'users', googleUser.uid);
       let userDocSnap;
       try {
         userDocSnap = await getDoc(userDocRef);
         if (!userDocSnap.exists()) {
-          await signOut(auth);
-          throw new Error("This Google account is not registered in our system. Access denied.");
+          console.log("[Google SSO] New workspace owner detected. Initializing database profile.");
+          await seedUserDataIfNecessary(
+            googleUser.uid,
+            googleUser.email || "",
+            googleUser.displayName || googleUser.email?.split('@')[0] || "Google Operator",
+            "Company Operations"
+          );
+          userDocSnap = await getDoc(userDocRef);
         }
       } catch (getDocErr: any) {
         if (getDocErr && (
@@ -220,14 +285,20 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
       const result = await signInWithPopup(auth, provider);
       const msUser = result.user;
       
-      // Verify user document existence in Firestore (Unregistered users cannot enter)
+      // Verify user document existence in Firestore (Unregistered users are automatically initialized)
       const userDocRef = doc(db, 'users', msUser.uid);
       let userDocSnap;
       try {
         userDocSnap = await getDoc(userDocRef);
         if (!userDocSnap.exists()) {
-          await signOut(auth);
-          throw new Error("This Microsoft account is not registered in our system. Access denied.");
+          console.log("[Microsoft SSO] New workspace owner detected. Initializing database profile.");
+          await seedUserDataIfNecessary(
+            msUser.uid,
+            msUser.email || "",
+            msUser.displayName || msUser.email?.split('@')[0] || "Microsoft Operator",
+            "Company Operations"
+          );
+          userDocSnap = await getDoc(userDocRef);
         }
       } catch (getDocErr: any) {
         if (getDocErr && (
@@ -305,6 +376,121 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
     }, 600);
   };
 
+  const handleVerificationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      if (!tempRegCode || !tempRegEmail) {
+        throw new Error("No pending registration session found. Please register again.");
+      }
+
+      if (tempRegCode === verificationCode.trim()) {
+        window.sessionStorage.setItem('is_registering', 'true');
+        
+        // 1. Create user account in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, tempRegEmail, tempRegPassword);
+        const signedUser = userCredential.user;
+
+        // 2. Set profile display name
+        await updateProfile(signedUser, { displayName: tempRegName });
+
+        // 3. Seed data profile
+        try {
+          await seedUserDataIfNecessary(signedUser.uid, tempRegEmail, tempRegName, tempRegCompany);
+        } catch (seedErr: any) {
+          if (seedErr && (
+            seedErr.message?.toLowerCase().includes('quota') ||
+            seedErr.message?.toLowerCase().includes('limit') ||
+            seedErr.message?.toLowerCase().includes('resource_exhausted') ||
+            seedErr.code === 'resource-exhausted'
+          )) {
+            console.warn("Quota limit detected during user seeding. Activating offline sandbox.");
+            window.localStorage.setItem('firestore_quota_exceeded', 'true');
+            (window as any).__markQuotaExceeded?.();
+          } else {
+            throw seedErr;
+          }
+        }
+
+        // 4. Log successful audited event
+        try {
+          await logAuditEvent(signedUser.uid, "User registered successfully with verified email: " + tempRegEmail, "User Session Profile");
+        } catch (logErr) {
+          console.error("Log verification audit failed:", logErr);
+        }
+
+        // 5. Sign out the user immediately so they must login standardly
+        await signOut(auth);
+
+        // 6. Reset all temporary session values
+        setTempRegName('');
+        setTempRegCompany('');
+        setTempRegEmail('');
+        setTempRegPassword('');
+        setTempRegCode('');
+        setVerificationCode('');
+
+        setSuccessMsg("Account successfully verified and activated! Redirecting to login...");
+        
+        // Wait 1.5 seconds and transition back to login mode
+        setTimeout(() => {
+          setMode('login');
+        }, 1500);
+      } else {
+        throw new Error("Invalid verification code. Please check your inbox and try again.");
+      }
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        setErrorMsg("This email address is already bound to a corporate workspace. Please log in or use a different email.");
+      } else if (err.code === 'auth/weak-password') {
+        setErrorMsg("Your Passkey Lock is too weak. Please use a sequence of at least 6 characters.");
+      } else if (err.code === 'auth/configuration-not-found' || err.code === 'auth/operation-not-allowed') {
+        setErrorMsg("Email/Password authentication provider is not enabled in the Firebase console. Please enable it in the console under Authentication -> Sign-in method.");
+      } else {
+        setErrorMsg(err.message || "Verification failed.");
+      }
+    } finally {
+      setLoading(false);
+      window.sessionStorage.removeItem('is_registering');
+    }
+  };
+
+  const handleResendCode = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const targetEmail = email || tempRegEmail;
+      if (!targetEmail) {
+        throw new Error("User email session not identified.");
+      }
+
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      setTempRegCode(newCode);
+
+      // Call API to send mail
+      const response = await fetch('/api/send-verification-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, code: newCode })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to dispatch verification email from info@unitedweb4.com.");
+      }
+
+      setSuccessMsg("A new verification code has been dispatched to: " + targetEmail);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to resend code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#171B26] flex flex-col justify-center py-12 sm:px-6 lg:px-8 selection:bg-[#00D4FF]/20 selection:text-[#00D4FF]">
       {/* Upper Brand Return link */}
@@ -327,12 +513,14 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
           {mode === 'forgot-password' && "Request Crypt-key Reset"}
           {mode === 'verify-email' && "Magic Link Sent"}
           {mode === '2fa' && "Multi-Factor Clearance Required"}
+          {mode === 'reset-password' && "Reset Workspace Passkey"}
         </h2>
         <p className="mt-2 text-xs text-[#BBC0C4] font-mono tracking-tight leading-relaxed px-4">
           {mode === 'login' && "Authenticate to access your Contract Studio enterprise workspace."}
           {mode === 'register' && "Initialize your secure Contract Studio workspace for enterprise contract operations, collaboration and agreement governance."}
           {mode === 'forgot-password' && "Send password restoration instructions securely"}
           {mode === '2fa' && "Enter your 6-digit corporate key tracker"}
+          {mode === 'reset-password' && "Restore workspace access by establishing a new secure passkey"}
         </p>
       </div>
 
@@ -350,7 +538,52 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
             </div>
           )}
 
-          {mode === '2fa' ? (
+          {mode === 'reset-password' ? (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-6">
+              <div>
+                <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">New Workspace Passkey</label>
+                <div className="mt-1 relative rounded">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
+                    <Lock size={16} />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter your new passkey"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Confirm New Workspace Passkey</label>
+                <div className="mt-1 relative rounded">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
+                    <Lock size={16} />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Confirm your new passkey"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] bg-[#171B26] text-white placeholder-[#80868B]"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-all duration-200 items-center gap-1.5 uppercase tracking-wider shadow-md hover:shadow-[0_4px_12px_rgba(0,212,255,0.2)]"
+              >
+                {loading && <Loader2 size={14} className="animate-spin" />}
+                <span>Reset and Secure Passkey</span> <ArrowRight size={14} />
+              </button>
+            </form>
+          ) : mode === '2fa' ? (
             <form onSubmit={handle2FAVerify} className="space-y-6">
               <div>
                 <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1">Secure 2FA Code</label>
@@ -381,31 +614,67 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
               </button>
             </form>
           ) : mode === 'verify-email' ? (
-            <div className="space-y-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-[#00D4FF]/10 flex items-center justify-center mx-auto text-[#00D4FF]">
+            <form onSubmit={handleVerificationSubmit} className="space-y-6">
+              <div className="w-16 h-16 rounded-full bg-[#00D4FF]/10 flex items-center justify-center mx-auto text-[#00D4FF] mb-4">
                 <Mail size={28} />
               </div>
-              <p className="text-xs text-[#BBC0C4] leading-relaxed">
-                We have dispatched a magic enrollment key to <b>{email}</b>. If this email matches your system profile, clicking the link in the envelope will bypass standard passwords.
+              <p className="text-xs text-[#BBC0C4] text-center leading-relaxed">
+                We have sent a verification code to <b>{email || tempRegEmail}</b> from <b>info@unitedweb4.com</b>. Please enter the 6-digit code below to unlock your workspace.
               </p>
+
+              <div>
+                <label className="block text-[11px] font-medium text-[#BBC0C4] mb-1 text-center">Verification Code</label>
+                <div className="mt-1 relative rounded">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#80868B]">
+                    <KeyRound size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    placeholder="Enter 6-digit code"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-[#2B3347] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#00D4FF] focus:border-[#00D4FF] font-mono tracking-widest text-center bg-[#171B26] text-white"
+                  />
+                </div>
+              </div>
+
               <button
-                onClick={() => {
-                  if (tempUser) {
-                    onLoginSuccess(tempUser);
-                  }
-                  onNavigate('/dashboard');
-                }}
-                className="w-full bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-sm font-bold py-2.5 px-4 rounded-lg transition-colors uppercase tracking-wider"
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg text-sm font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] focus:outline-none transition-colors items-center gap-1.5 uppercase tracking-wider"
               >
-                Simulate Direct Entrance (Preview Force-in)
+                {loading && <Loader2 size={14} className="animate-spin" />}
+                <span>Verify & Activate Account</span> <ArrowRight size={14} />
               </button>
-              <button
-                onClick={() => setMode('login')}
-                className="text-xs text-[#00D4FF] hover:text-[#33DDFF] font-bold transition-colors underline uppercase tracking-wider block mx-auto"
-              >
-                Return to Login Gate
-              </button>
-            </div>
+
+              <div className="flex justify-between items-center text-xs mt-4">
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={loading}
+                  className="text-[#00D4FF] hover:text-[#33DDFF] font-bold transition-colors underline uppercase tracking-wider"
+                >
+                  Resend Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempRegName('');
+                    setTempRegCompany('');
+                    setTempRegEmail('');
+                    setTempRegPassword('');
+                    setTempRegCode('');
+                    setVerificationCode('');
+                    setMode('login');
+                  }}
+                  className="text-[#BBC0C4] hover:text-white font-bold transition-colors underline uppercase tracking-wider"
+                >
+                  Cancel & Return
+                </button>
+              </div>
+            </form>
           ) : (
             <>
               <form onSubmit={handleEmailAuthSubmit} className="space-y-5">
@@ -589,6 +858,20 @@ export default function AuthScreens({ initialMode, onNavigate, onLoginSuccess }:
                 <div className="mt-6 text-center">
                   <button
                     onClick={() => setMode('login')}
+                    className="text-[11px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors flex items-center justify-center gap-1 mx-auto underline uppercase tracking-wider"
+                  >
+                    <ChevronLeft size={14} /> Back to Login
+                  </button>
+                </div>
+              )}
+
+              {mode === 'reset-password' && (
+                <div className="mt-6 text-center">
+                  <button
+                    onClick={() => {
+                      setMode('login');
+                      onNavigate('/login');
+                    }}
                     className="text-[11px] text-[#BBC0C4] hover:text-[#00D4FF] font-bold transition-colors flex items-center justify-center gap-1 mx-auto underline uppercase tracking-wider"
                   >
                     <ChevronLeft size={14} /> Back to Login

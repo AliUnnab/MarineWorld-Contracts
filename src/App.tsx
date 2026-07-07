@@ -37,7 +37,8 @@ type RoutePath =
   | '/help'
   | '/trust'
   | '/security'
-  | '/ai-docs';
+  | '/ai-docs'
+  | '/reset-password';
 
 const verifiedStripeSessions = new Set<string>();
 
@@ -77,7 +78,7 @@ const App: React.FC = () => {
       '/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/verify',
       '/dashboard', '/repository', '/templates', '/new-contract', '/wallet', '/billing', 
       '/subscription', '/workspace', '/audit', '/settings', '/support',
-      '/docs', '/help', '/trust', '/security', '/ai-docs'
+      '/docs', '/help', '/trust', '/security', '/ai-docs', '/reset-password'
     ];
     return validPaths.includes(path) ? (path as RoutePath) : '/';
   });
@@ -101,14 +102,19 @@ const App: React.FC = () => {
   // Sync URL bar on mount if restored from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('current_route');
-    if (stored && stored !== window.location.pathname) {
-      window.history.replaceState(null, '', stored);
+    // Only restore cached route from localStorage if visiting the default root path
+    if (window.location.pathname === '/') {
+      if (stored && stored !== window.location.pathname) {
+        window.history.replaceState(null, '', stored);
+      }
     }
   }, []);
 
   const [verifyingSession, setVerifyingSession] = useState(false);
 
   useEffect(() => {
+    if (appInitializing) return;
+
     // Check for session_id on mount
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session_id');
@@ -116,7 +122,7 @@ const App: React.FC = () => {
     if (sessionId && currentUser) {
       handleVerifyStripeSession(sessionId);
     }
-  }, [currentUser]);
+  }, [currentUser, appInitializing]);
 
   const handleVerifyStripeSession = async (sessionId: string) => {
     if (verifiedStripeSessions.has(sessionId)) {
@@ -131,8 +137,15 @@ const App: React.FC = () => {
       const { doc, getDoc, setDoc, updateDoc, collection, addDoc, increment } = await import('firebase/firestore');
 
       // Idempotency check: check if this Stripe Checkout Session has already been processed
+      let sessionSnap;
       const sessionRef = doc(db, 'processed_stripe_sessions', sessionId);
-      const sessionSnap = await getDoc(sessionRef);
+      try {
+        sessionSnap = await getDoc(sessionRef);
+      } catch (err) {
+        console.error("[Stripe Verify] Error reading processed_stripe_sessions for sessionId:", sessionId, err);
+        throw err;
+      }
+
       if (sessionSnap.exists()) {
         console.warn("[Stripe Verify] Checkout Session already processed and provisioned:", sessionId);
         verifySuccess = true;
@@ -148,6 +161,7 @@ const App: React.FC = () => {
 
       if (data.success && currentUser) {
         const { userId, planId, mode, billingCycle } = data.metadata;
+        console.log("[Stripe Verify] Session verification data success. Metadata:", data.metadata);
 
         if (mode === 'subscription') {
           // Find plan info
@@ -167,65 +181,101 @@ const App: React.FC = () => {
             const currentPeriodEnd = new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000).toISOString();
 
             // Update subscription details in Firestore block
-            await setDoc(doc(db, 'subscriptions', currentUser.uid), {
-              status: 'active',
-              plan: planId,
-              amount: priceVal,
-              billingCycle: billingCycleStr,
-              currentPeriodStart,
-              currentPeriodEnd,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            try {
+              console.log("[Stripe Verify] Writing to subscriptions:", userId);
+              await setDoc(doc(db, 'subscriptions', userId), {
+                status: 'active',
+                plan: planId,
+                amount: priceVal,
+                billingCycle: billingCycleStr,
+                currentPeriodStart,
+                currentPeriodEnd,
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to write to subscriptions for userId:", userId, err);
+              throw err;
+            }
 
             // Synchronize user profile planId
-            await setDoc(doc(db, 'users', currentUser.uid), { planId: planId }, { merge: true });
+            try {
+              console.log("[Stripe Verify] Writing planId to users:", userId);
+              await setDoc(doc(db, 'users', userId), { planId: planId }, { merge: true });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to write planId to users for userId:", userId, err);
+              throw err;
+            }
 
             // Initialize/update credit wallets capacities
-            await setDoc(doc(db, 'credit_wallets', currentUser.uid), {
-              id: currentUser.uid,
-              userId: currentUser.uid,
-              creditsTotal: planInfo.credits,
-              creditsRemaining: planInfo.credits,
-              creditsUsed: 0,
-              autoRecharge: false,
-              rechargeThreshold: 200,
-              rechargeAmount: 500
-            }, { merge: true });
+            try {
+              console.log("[Stripe Verify] Writing to credit_wallets:", userId);
+              await setDoc(doc(db, 'credit_wallets', userId), {
+                id: userId,
+                userId: userId,
+                creditsTotal: planInfo.credits,
+                creditsRemaining: planInfo.credits,
+                creditsUsed: 0,
+                autoRecharge: false,
+                rechargeThreshold: 200,
+                rechargeAmount: 500
+              }, { merge: true });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to write to credit_wallets for userId:", userId, err);
+              throw err;
+            }
 
             // Synchronize wallets payment method
-            await setDoc(doc(db, 'wallets', currentUser.uid), {
-              isPaymentMethodValid: true,
-              lastFour: 'Stripe',
-              cardHolder: currentUser.displayName || currentUser.email || 'Customer',
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            try {
+              console.log("[Stripe Verify] Writing to wallets:", userId);
+              await setDoc(doc(db, 'wallets', userId), {
+                isPaymentMethodValid: true,
+                lastFour: 'Stripe',
+                cardHolder: currentUser.displayName || currentUser.email || 'Customer',
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to write to wallets for userId:", userId, err);
+              throw err;
+            }
 
             // Log invoice statement
-            await addDoc(collection(db, 'invoices'), {
-              userId: currentUser.uid,
-              invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
-              amount: `$${priceVal}.00`,
-              status: 'paid',
-              date: new Date().toISOString(),
-              plan: `${planId} Plan Subscription`,
-              description: `B2B ${planId} ${billingCycleStr} Subscription Activation`,
-              downloadUrl: '#'
-            });
+            try {
+              console.log("[Stripe Verify] Adding invoice for userId:", userId);
+              await addDoc(collection(db, 'invoices'), {
+                userId: userId,
+                invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
+                amount: `$${priceVal}.00`,
+                status: 'paid',
+                date: new Date().toISOString(),
+                plan: `${planId} Plan Subscription`,
+                description: `B2B ${planId} ${billingCycleStr} Subscription Activation`,
+                downloadUrl: '#'
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to add invoice for userId:", userId, err);
+              throw err;
+            }
 
             try {
-              await logAuditEvent(currentUser.uid, `Stripe Subscription Payment Verified & Activated: ${planId} Plan (${billingCycleStr}). Price: $${priceVal}.00`, "Billing & Subscription");
+              await logAuditEvent(userId, `Stripe Subscription Payment Verified & Activated: ${planId} Plan (${billingCycleStr}). Price: $${priceVal}.00`, "Billing & Subscription");
             } catch (logErr) {
               console.error("Payment verify log failed:", logErr);
             }
 
             // Mark session as processed to prevent double-crediting/provisioning
-            await setDoc(sessionRef, {
-              processedAt: new Date().toISOString(),
-              userId: currentUser.uid,
-              planId: planId,
-              credits: planInfo.credits,
-              mode: mode
-            });
+            try {
+              console.log("[Stripe Verify] Marking processed_stripe_sessions:", sessionId);
+              await setDoc(sessionRef, {
+                processedAt: new Date().toISOString(),
+                userId: userId,
+                planId: planId,
+                credits: planInfo.credits,
+                mode: mode
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to mark processed session for sessionId:", sessionId, err);
+              throw err;
+            }
 
             verifySuccess = true;
           }
@@ -246,51 +296,81 @@ const App: React.FC = () => {
           ];
           const pack = packs.find(p => p.id === planId) || packs.find(p => p.name === planId);
           if (pack) {
-            await updateDoc(doc(db, 'credit_wallets', currentUser.uid), {
-              creditsTotal: increment(pack.credits),
-              creditsRemaining: increment(pack.credits)
-            });
-
-            await addDoc(collection(db, 'credit_transactions'), {
-              userId: currentUser.uid,
-              date: new Date().toISOString().split('T')[0],
-              packet: `Stripe Refill: ${pack.name}`,
-              changeCredits: pack.credits,
-              price: pack.price,
-              timestamp: new Date().toISOString()
-            });
-
-            await addDoc(collection(db, 'invoices'), {
-              userId: currentUser.uid,
-              invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
-              date: new Date().toISOString().split('T')[0],
-              amount: pack.price,
-              status: "paid",
-              plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
-            });
-
-            // Synchronize wallets payment method
-            await setDoc(doc(db, 'wallets', currentUser.uid), {
-              isPaymentMethodValid: true,
-              lastFour: 'Stripe',
-              cardHolder: currentUser.displayName || currentUser.email || 'Customer',
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
+            try {
+              console.log("[Stripe Verify] Updating credit_wallets balance:", userId);
+              await updateDoc(doc(db, 'credit_wallets', userId), {
+                creditsTotal: increment(pack.credits),
+                creditsRemaining: increment(pack.credits)
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to update credit_wallets for userId:", userId, err);
+              throw err;
+            }
 
             try {
-              await logAuditEvent(currentUser.uid, `Stripe Quota Refill Verified: ${pack.name} (+${pack.credits} Credits)`, "Billing & Subscription");
+              console.log("[Stripe Verify] Adding credit transaction log:", userId);
+              await addDoc(collection(db, 'credit_transactions'), {
+                userId: userId,
+                date: new Date().toISOString().split('T')[0],
+                packet: `Stripe Refill: ${pack.name}`,
+                changeCredits: pack.credits,
+                price: pack.price,
+                timestamp: new Date().toISOString()
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to add credit transaction for userId:", userId, err);
+              throw err;
+            }
+
+            try {
+              console.log("[Stripe Verify] Adding invoice for refill:", userId);
+              await addDoc(collection(db, 'invoices'), {
+                userId: userId,
+                invoiceNumber: `INV-${100000 + Math.floor(Math.random() * 900000)}`,
+                date: new Date().toISOString().split('T')[0],
+                amount: pack.price,
+                status: "paid",
+                plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to add invoice for refill:", userId, err);
+              throw err;
+            }
+
+            // Synchronize wallets payment method
+            try {
+              console.log("[Stripe Verify] Writing wallets for refill:", userId);
+              await setDoc(doc(db, 'wallets', userId), {
+                isPaymentMethodValid: true,
+                lastFour: 'Stripe',
+                cardHolder: currentUser.displayName || currentUser.email || 'Customer',
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to write to wallets for refill:", userId, err);
+              throw err;
+            }
+
+            try {
+              await logAuditEvent(userId, `Stripe Quota Refill Verified: ${pack.name} (+${pack.credits} Credits)`, "Billing & Subscription");
             } catch (logErr) {
               console.error("Quota refill verify log failed:", logErr);
             }
 
             // Mark session as processed to prevent double-crediting/provisioning
-            await setDoc(sessionRef, {
-              processedAt: new Date().toISOString(),
-              userId: currentUser.uid,
-              planId: planId,
-              credits: pack.credits,
-              mode: mode
-            });
+            try {
+              console.log("[Stripe Verify] Marking processed session for top-up:", sessionId);
+              await setDoc(sessionRef, {
+                processedAt: new Date().toISOString(),
+                userId: userId,
+                planId: planId,
+                credits: pack.credits,
+                mode: mode
+              });
+            } catch (err) {
+              console.error("[Stripe Verify] Failed to mark processed session for top-up:", sessionId, err);
+              throw err;
+            }
 
             verifySuccess = true;
           }
@@ -298,12 +378,13 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Session verification failed:", err);
+      verifiedStripeSessions.delete(sessionId);
     } finally {
       setVerifyingSession(false);
-      // Clean URL
-      const currentPath = window.location.pathname;
-      window.history.replaceState({}, document.title, currentPath);
       if (verifySuccess) {
+        // Clean URL
+        const currentPath = window.location.pathname;
+        window.history.replaceState({}, document.title, currentPath);
         if (currentPath === '/') {
           navigateTo('/dashboard');
         } else {
@@ -326,7 +407,7 @@ const App: React.FC = () => {
         '/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/verify',
         '/dashboard', '/repository', '/templates', '/new-contract', '/wallet', '/billing', 
         '/subscription', '/workspace', '/audit', '/settings', '/support',
-        '/docs', '/help', '/trust', '/security', '/ai-docs'
+        '/docs', '/help', '/trust', '/security', '/ai-docs', '/reset-password'
       ];
       if (validPaths.includes(path)) {
         setCurrentRoute(path as RoutePath);
@@ -434,12 +515,24 @@ const App: React.FC = () => {
                 });
                 userDocSnap = await getDoc(userDocRef);
               } else {
-                const { signOut } = await import('firebase/auth');
-                await signOut(auth);
-                setCurrentUser(null);
-                window.localStorage.setItem('auth_error', 'Bu hesap Firestore veri tabanında kayıtlı değil. Giriş engellendi.');
-                navigateTo('/login');
-                return;
+                const isSSO = user.providerData.some(p => p.providerId === 'google.com' || p.providerId === 'microsoft.com');
+                if (isSSO) {
+                  const { seedUserDataIfNecessary } = await import('./lib/firebaseSeeder');
+                  await seedUserDataIfNecessary(
+                    user.uid,
+                    user.email || "",
+                    user.displayName || user.email?.split('@')[0] || "SSO User",
+                    "Company Operations"
+                  );
+                  userDocSnap = await getDoc(userDocRef);
+                } else {
+                  const { signOut } = await import('firebase/auth');
+                  await signOut(auth);
+                  setCurrentUser(null);
+                  window.localStorage.setItem('auth_error', 'Bu hesap Firestore veri tabanında kayıtlı değil. Giriş engellendi.');
+                  navigateTo('/login');
+                  return;
+                }
               }
             } else {
               // Ensure teammate profile fields are up to date if they were invited
@@ -495,7 +588,7 @@ const App: React.FC = () => {
           }
           
           // If not logged in and requesting protected scopes, redirect to login gate
-          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs'].includes(currentPath) && !currentPath.startsWith('/verify')) {
+          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs', '/reset-password'].includes(currentPath) && !currentPath.startsWith('/verify')) {
             setCurrentUser(null);
             navigateTo('/login');
           } else {
@@ -516,7 +609,7 @@ const App: React.FC = () => {
             navigateTo('/dashboard');
           }
         } else {
-          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs'].includes(currentPath) && !currentPath.startsWith('/verify')) {
+          if (!['/', '/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/docs', '/help', '/trust', '/security', '/ai-docs', '/reset-password'].includes(currentPath) && !currentPath.startsWith('/verify')) {
             navigateTo('/login');
           }
         }
@@ -545,7 +638,7 @@ const App: React.FC = () => {
   }
 
   // Check if we are in an active auth screen route
-  const isAuthRoute = ['/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentRoute);
+  const isAuthRoute = ['/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/reset-password'].includes(currentRoute);
   const isVerificationRoute = currentRoute === '/verify' || window.location.pathname.startsWith('/verify');
   const isExecutionRoute = window.location.pathname.startsWith('/execute/');
 
@@ -582,7 +675,7 @@ const App: React.FC = () => {
       ) : (
         // Environment 01: Public Portal (Light style Stripe/Linear context)
         <>
-          {(currentRoute === '/' || (!['/login', '/register', '/forgot-password', '/verify-email', '/2fa'].includes(currentRoute) && !isVerificationRoute && !isExecutionRoute)) && (
+          {(currentRoute === '/' || (!['/login', '/register', '/forgot-password', '/verify-email', '/2fa', '/reset-password'].includes(currentRoute) && !isVerificationRoute && !isExecutionRoute)) && (
             <LandingPage onNavigate={navigateTo} />
           )}
 
@@ -605,6 +698,14 @@ const App: React.FC = () => {
           {currentRoute === '/forgot-password' && (
             <AuthScreens 
               initialMode="forgot-password" 
+              onNavigate={navigateTo} 
+              onLoginSuccess={(signed) => setCurrentUser(signed)} 
+            />
+          )}
+
+          {currentRoute === '/reset-password' && (
+            <AuthScreens 
+              initialMode="reset-password" 
               onNavigate={navigateTo} 
               onLoginSuccess={(signed) => setCurrentUser(signed)} 
             />

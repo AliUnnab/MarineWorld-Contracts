@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, logAuditEvent } from '../../services/firebase-service';
 import { collection, query, where, getDocs, onSnapshot, orderBy, limit, doc, setDoc } from 'firebase/firestore';
-import { mockContracts, mockTransactions, mockAuditLogs, mockWallet, mockSubscription } from '../mockDataFallback';
+import { mockContracts, mockTransactions, mockAuditLogs, mockWallet, mockSubscription, mockInvoices } from '../mockDataFallback';
 import { 
   FileText, ShieldCheck, FileClock, Users, Coins, Percent, 
   Activity, Award, ArrowUpRight, Plus, Loader2, Save 
@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { 
   SaasSubscription, CreditWallet, SaaSContract, 
-  WorkspaceMember, AuditLogEvent 
+  WorkspaceMember, AuditLogEvent, SaaSInvoice
 } from '../types/saas';
 
 interface DashboardViewProps {
@@ -29,6 +29,7 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
   const [subscription, setSubscription] = useState<SaasSubscription | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLogEvent[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<SaaSInvoice[]>([]);
 
   // Workspace notes states
   const [workspaceNote, setWorkspaceNote] = useState('');
@@ -56,6 +57,7 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
       setSubscription(mockSubscription as any);
       setMembersCount(3);
       setWorkspaceNote("Simulated high-performance secure workspace active. All system metrics and B2B workflows are functioning using simulated offline/local memory.");
+      setInvoices(mockInvoices);
       setLoading(false);
       return;
     }
@@ -69,6 +71,7 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
       setSubscription(mockSubscription as any);
       setMembersCount(3);
       setWorkspaceNote("Simulated high-performance secure workspace active. All system metrics and B2B workflows are functioning using simulated offline/local memory.");
+      setInvoices(mockInvoices);
       setLoading(false);
     };
 
@@ -185,6 +188,30 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
       });
     });
 
+    // Load invoices (real payments)
+    const invoicesQuery = query(collection(db, 'invoices'), where('userId', '==', userId));
+    const invoicesUnsub = onSnapshot(invoicesQuery, (snap) => {
+      const records: SaaSInvoice[] = [];
+      snap.forEach((docSnap) => {
+        records.push({ id: docSnap.id, ...docSnap.data() } as SaaSInvoice);
+      });
+      // Sort by date desc
+      records.sort((a, b) => {
+        const parseTime = (d: any) => {
+          if (!d) return 0;
+          if (typeof d === 'string') return new Date(d).getTime();
+          if (d.toMillis) return d.toMillis();
+          if (d.seconds) return d.seconds * 1000;
+          return 0;
+        };
+        return parseTime(b.date) - parseTime(a.date);
+      });
+      setInvoices(records.slice(0, 5));
+    }, (err) => {
+      console.error("Invoices loading error:", err);
+      if (isQuotaError(err)) triggerQuotaFallback();
+    });
+
     return () => {
       noteUnsub();
       walletUnsub();
@@ -193,6 +220,7 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
       membersUnsub();
       txUnsub();
       logsUnsub();
+      invoicesUnsub();
     };
   }, [userId]);
 
@@ -547,13 +575,13 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
                   <span className="flex items-center gap-1.5 text-[10px] text-[#00D4FF] font-bold uppercase tracking-[0.15em]">
                     <Activity size={12} /> System Telemetry Stream
                   </span>
-                  <h4 className="text-[#80868B] text-[10px] md:text-[11px] mt-1 font-mono uppercase tracking-tighter">Real-time audit listening to isolated workspace</h4>
+                  <h4 className="text-[#80868B] text-[10px] md:text-[11px] mt-1 font-mono uppercase tracking-tighter">Real-time payment audit listening to isolated workspace</h4>
                 </div>
                 <button 
-                  onClick={() => onNavigateTab('Audit Logs')}
+                  onClick={() => onNavigateTab('Billing Center')}
                   className="w-full sm:w-auto text-[10px] md:text-[11px] text-[#00D4FF] hover:text-[#33DDFF] font-bold uppercase tracking-widest border border-[#00D4FF]/20 px-4 py-2 rounded-lg transition-all text-center"
                 >
-                  Expand Ledger
+                  Billing Ledger
                 </button>
               </div>
 
@@ -562,29 +590,32 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
                 <table className="w-full text-xs text-[#E8EAED]">
                   <thead>
                     <tr className="border-b border-white/5 text-[#80868B] text-left uppercase font-mono tracking-tighter text-[9px]">
-                      <th className="pb-4 font-bold">Node Operator</th>
-                      <th className="pb-4 font-bold">Action Vector</th>
-                      <th className="pb-4 font-bold">Object Pointer</th>
-                      <th className="pb-4 font-bold">Vector IP</th>
-                      <th className="pb-4 text-right font-bold">Timeframe</th>
+                      <th className="pb-4 font-bold">Invoice Nr</th>
+                      <th className="pb-4 font-bold">Service Line Plan</th>
+                      <th className="pb-4 font-bold">Aggregate Cost</th>
+                      <th className="pb-4 font-bold">Status</th>
+                      <th className="pb-4 text-right font-bold">Renewal Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.03] text-[11px]">
-                    {recentLogs.length > 0 ? (
-                      recentLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-white/[0.02] transition-colors group">
+                    {invoices.length > 0 ? (
+                      invoices.map((inv) => (
+                        <tr key={inv.id} className="hover:bg-white/[0.02] transition-colors group">
                           <td className="py-4">
-                            <p className="font-bold text-white uppercase tracking-tight">{log.actorName || "Unresolved"}</p>
-                            <span className="text-[9px] text-[#80868B] font-mono">{log.actorEmail}</span>
+                            <p className="font-bold text-white uppercase tracking-tight">{inv.invoiceNumber || 'INV-000000'}</p>
                           </td>
-                          <td className="py-4 text-[#BBC0C4] uppercase tracking-tight">{log.action || "Standard Operation"}</td>
-                          <td className="py-4 font-mono text-[#80868B] uppercase tracking-tighter">{log.targetDocument || "System Root"}</td>
-                          <td className="py-4 font-mono text-[#80868B]">{log.ipAddress || "127.0.0.1"}</td>
+                          <td className="py-4 text-[#BBC0C4] uppercase tracking-tight">{inv.plan || 'Plan subscription'}</td>
+                          <td className="py-4 font-mono text-[#00D68F] uppercase tracking-tighter">{inv.amount || 'USD 0.00'}</td>
+                          <td className="py-4">
+                            <span className="px-2 py-0.5 rounded-full text-[8px] font-bold uppercase bg-[#00D68F]/10 text-[#00D68F] border border-[#00D68F]/20">
+                              {inv.status || 'paid'}
+                            </span>
+                          </td>
                           <td className="py-4 text-right text-[#80868B] font-mono group-hover:text-white transition-colors">
                             {(() => {
-                              if (!log.timestamp) return "Just Now";
-                              const date = typeof log.timestamp === 'string' ? new Date(log.timestamp) : (log.timestamp as any).toDate?.() || new Date(log.timestamp);
-                              return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleTimeString();
+                              if (!inv.date) return "N/A";
+                              const date = typeof inv.date === 'string' ? new Date(inv.date) : (inv.date as any).toDate?.() || new Date(inv.date);
+                              return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleDateString();
                             })()}
                           </td>
                         </tr>
@@ -592,7 +623,7 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-12 text-center text-[#80868B] font-mono uppercase tracking-widest text-[10px]">
-                          No immediate audit activity recorded for this secure session.
+                          No invoices recorded on file.
                         </td>
                       </tr>
                     )}
@@ -602,37 +633,36 @@ export default function DashboardView({ userId, onNavigateTab, orgName }: Dashbo
 
               {/* Mobile/Tablet Card List View */}
               <div className="lg:hidden space-y-4">
-                {recentLogs.length > 0 ? (
-                  recentLogs.map((log) => (
-                    <div key={log.id} className="p-4 bg-[#171B26] border border-white/5 rounded-xl space-y-3">
+                {invoices.length > 0 ? (
+                  invoices.map((inv) => (
+                    <div key={inv.id} className="p-4 bg-[#171B26] border border-white/5 rounded-xl space-y-3">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="text-[11px] font-bold text-white uppercase tracking-tight">{log.actorName || "Unresolved"}</p>
-                          <p className="text-[9px] text-[#80868B] font-mono">{log.actorEmail}</p>
+                          <p className="text-[11px] font-bold text-white uppercase tracking-tight">{inv.invoiceNumber || 'INV-000000'}</p>
                         </div>
                         <span className="text-[9px] text-[#80868B] font-mono whitespace-nowrap">
                           {(() => {
-                            if (!log.timestamp) return "Just Now";
-                            const date = typeof log.timestamp === 'string' ? new Date(log.timestamp) : (log.timestamp as any).toDate?.() || new Date(log.timestamp);
-                            return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleTimeString();
+                            if (!inv.date) return "N/A";
+                            const date = typeof inv.date === 'string' ? new Date(inv.date) : (inv.date as any).toDate?.() || new Date(inv.date);
+                            return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleDateString();
                           })()}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-4 pt-3 border-t border-white/[0.03]">
                         <div>
-                          <span className="text-[8px] font-bold text-[#80868B] uppercase block">Action</span>
-                          <span className="text-[10px] text-[#BBC0C4] uppercase font-medium">{log.action || "Standard Operation"}</span>
+                          <span className="text-[8px] font-bold text-[#80868B] uppercase block">Plan</span>
+                          <span className="text-[10px] text-[#BBC0C4] uppercase font-medium">{inv.plan || 'Plan subscription'}</span>
                         </div>
                         <div>
-                          <span className="text-[8px] font-bold text-[#80868B] uppercase block">Pointer</span>
-                          <span className="text-[10px] text-[#80868B] font-mono truncate block">{log.targetDocument || "System Root"}</span>
+                          <span className="text-[8px] font-bold text-[#80868B] uppercase block">Amount</span>
+                          <span className="text-[10px] text-[#00D68F] font-mono truncate block">{inv.amount || 'USD 0.00'}</span>
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="py-12 text-center text-[#80868B] font-mono uppercase tracking-widest text-[10px]">
-                    No immediate audit activity recorded.
+                    No invoices recorded on file.
                   </div>
                 )}
               </div>

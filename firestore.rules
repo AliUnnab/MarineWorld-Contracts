@@ -10,6 +10,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isOwnerOrTeammate(userId) {
+      return isSignedIn() && (request.auth.uid == userId || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == userId));
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
@@ -17,34 +21,39 @@ service cloud.firestore {
 
     // User profile and settings
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwnerOrTeammate(userId);
     }
     
     // Wallets and Subscriptions
     match /credit_wallets/{userId} {
       allow read: if isSignedIn();
-      allow write: if isOwner(userId);
+      allow write: if isOwnerOrTeammate(userId);
     }
     match /wallets/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwnerOrTeammate(userId);
     }
     match /subscriptions/{userId} {
       allow read: if isSignedIn();
-      allow write: if isOwner(userId);
+      allow write: if isOwnerOrTeammate(userId);
     }
     match /workspace_notes/{userId} {
       allow read, write: if isOwner(userId);
     }
+    
+    // Stripe Session processing
+    match /processed_stripe_sessions/{sessionId} {
+      allow read, write: if true;
+    }
 
     // Financial Records (Immutable, restricted by userId in document)
     match /credit_transactions/{txId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
       allow update, delete: if false;
     }
     match /invoices/{invoiceId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
       allow update, delete: if false;
     }
     
@@ -86,8 +95,8 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
     match /audit_logs/{logId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid; 
       // Actually audit logs might need to be deleted when user deletes account/settings
     }

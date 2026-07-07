@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0585677554",
-  "appId": "1:902567047370:web:4cb6a1eb37bc0eb1244433",
-  "apiKey": "AIzaSyCraGw5uTZeOSv5SsAc1lyGeIovA2A9HGI",
-  "authDomain": "gen-lang-client-0585677554.firebaseapp.com",
+  "projectId": "marineworld-contracts",
+  "appId": "1:248217094711:web:75ecdb74d00b3590650db2",
+  "apiKey": "AIzaSyArhGevGY1v6ZSjaj6b7PSWP_ee8o45yZM",
+  "authDomain": "marineworld-contracts.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51",
-  "storageBucket": "gen-lang-client-0585677554.firebasestorage.app",
-  "messagingSenderId": "902567047370",
-  "measurementId": ""
+  "storageBucket": "marineworld-contracts.firebasestorage.app",
+  "messagingSenderId": "248217094711",
+  "measurementId": "G-WSH8EF91V5"
 }

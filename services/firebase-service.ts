@@ -232,17 +232,17 @@ export function handleFirestoreError(
 const firebaseConfig = {
   apiKey:
     appletFirebaseConfig.apiKey ||
-    "AIzaSyPlaceholderApiKeyForPreviewEnvironmentOnly",
+    "AIzaSyArhGevGY1v6ZSjaj6b7PSWP_ee8o45yZM",
   authDomain:
     appletFirebaseConfig.authDomain ||
-    "gen-lang-client-0585677554.firebaseapp.com",
-  projectId: appletFirebaseConfig.projectId || "gen-lang-client-0585677554",
+    "marineworld-contracts.firebaseapp.com",
+  projectId: appletFirebaseConfig.projectId || "marineworld-contracts",
   storageBucket:
     appletFirebaseConfig.storageBucket ||
-    "gen-lang-client-0585677554.firebasestorage.app",
-  messagingSenderId: appletFirebaseConfig.messagingSenderId || "123456789012",
+    "marineworld-contracts.firebasestorage.app",
+  messagingSenderId: appletFirebaseConfig.messagingSenderId || "248217094711",
   appId:
-    appletFirebaseConfig.appId || "1:123456789012:web:placeholderappidofficial",
+    appletFirebaseConfig.appId || "1:248217094711:web:75ecdb74d00b3590650db2",
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();

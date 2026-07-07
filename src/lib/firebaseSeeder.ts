@@ -23,7 +23,13 @@ import {
 } from '../types/saas';
 
 // Automatically seed necessary Firestore documents for the user to make sure all metrics/modules have database sources
-export async function seedUserDataIfNecessary(userId: string, email: string, displayName: string, companyName: string): Promise<void> {
+export async function seedUserDataIfNecessary(
+  userId: string, 
+  email: string, 
+  displayName: string, 
+  companyName: string,
+  verificationCode?: string
+): Promise<void> {
   const userProfileRef = doc(db, 'users', userId);
   
   try {
@@ -46,7 +52,9 @@ export async function seedUserDataIfNecessary(userId: string, email: string, dis
       companyName: companyName || "Global Trade & Maritime Operations Ltd",
       role: "2 exhibitor",
       createdAt: batchTimestamp,
-      twoFactorEnabled: false
+      twoFactorEnabled: false,
+      emailVerifiedCustom: verificationCode ? false : true,
+      verificationCodeCustom: verificationCode || null
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `users/${userId}`);
