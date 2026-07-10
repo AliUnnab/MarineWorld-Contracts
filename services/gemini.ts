@@ -178,7 +178,7 @@ When responding to the user:
 
     // Calling the modern SDK generateContent
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: [
         ...formattedHistory,
         { role: "user", parts: [{ text: query }] },
@@ -247,7 +247,7 @@ RULES:
 5. Do NOT include any disclaimers or side notes. Just the contract clause.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: `Please rewrite the clause: ${clauseTitle} according to instruction: ${instruction}` }] }],
       config: {
         systemInstruction: systemPrompt,
@@ -349,7 +349,7 @@ ${stateString}
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: [
         ...formattedHistory,
         { role: "user", parts: [{ text: query }] },

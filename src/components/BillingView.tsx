@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, logAuditEvent } from '../../services/firebase-service';
+import { auth, db, logAuditEvent } from '../../services/firebase-service';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { 
   CreditCard, FileText, Download, CheckCircle, AlertTriangle, 
@@ -9,6 +9,7 @@ import { SaaSInvoice } from '../types/saas';
 import { jsPDF } from 'jspdf';
 import PaymentModal from './PaymentModal';
 import { StripeService } from '../services/stripe-service';
+import Invoice from './Invoice';
 
 interface BillingViewProps {
   userId: string;
@@ -18,6 +19,7 @@ interface BillingViewProps {
 export default function BillingView({ userId, userDisplayName }: BillingViewProps) {
   const [invoices, setInvoices] = useState<SaaSInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   const formatToUSD = (amtStr: string) => {
     if (!amtStr) return 'USD 0.00';
@@ -119,201 +121,174 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
     // A5 Size: 148 x 210 mm
     const doc = new jsPDF({ format: 'a5', orientation: 'portrait' });
     
-    const textBlack = [23, 27, 38];
-    const textGray = [128, 134, 139];
-    const colorAccent = [0, 212, 255];
-    const colorGreen = [0, 214, 143]; 
+    const textBlack = [15, 23, 42]; // Slate 900
+    const textGray = [100, 116, 139]; // Slate 500
+    const dividerColor = [226, 232, 240]; // Slate 200
     
     let dateStr = 'N/A';
     if (invoice.date) {
       if (typeof invoice.date === 'string') {
-        dateStr = invoice.date;
+        try {
+          dateStr = new Date(invoice.date).toISOString();
+        } catch (e) {
+          dateStr = invoice.date;
+        }
       } else if (typeof (invoice.date as any).toDate === 'function') {
-        dateStr = (invoice.date as any).toDate().toLocaleDateString();
+        dateStr = (invoice.date as any).toDate().toISOString();
       }
     }
 
-    // --- HEADER ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("MARINEWORLD", 15, 20);
-    doc.text("Contract Studio", 15, 25);
+    const setFont = (style: 'bold' | 'normal', size: number, color: number[]) => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(size);
+      doc.setTextColor(color[0], color[1], color[2]);
+    };
+
+    // --- HEADER LEFT ---
+    setFont("bold", 12, textBlack);
+    doc.text("MARINEWORLD", 15, 18);
     
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Enterprise Contract Operating System", 15, 30);
+    setFont("normal", 10, textBlack);
+    doc.text("Contract Studio", 15, 22.5);
     
-    // Right side Header
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(colorAccent[0], colorAccent[1], colorAccent[2]);
-    doc.text("INVOICE", 133, 22, { align: "right" });
+    setFont("normal", 6.5, textGray);
+    doc.text("The Contract Operating System", 15, 27);
+    doc.text("for the Global Maritime Economy", 15, 30.5);
+
+    // --- HEADER RIGHT ---
+    setFont("bold", 16, textBlack);
+    doc.text("INVOICE", 133, 18, { align: "right" });
     
-    doc.setFontSize(8);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.setFont("helvetica", "normal");
-    doc.text("Invoice No.", 133, 28, { align: "right" });
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(invoice.invoiceNumber || "INV-000000", 133, 32, { align: "right" });
+    setFont("normal", 6.5, textGray);
+    doc.text("Invoice No.", 133, 24, { align: "right" });
     
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Invoice Date", 133, 38, { align: "right" });
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(dateStr, 133, 42, { align: "right" });
+    setFont("bold", 8.5, textBlack);
+    doc.text(invoice.invoiceNumber || "INV-000000", 133, 28, { align: "right" });
     
-    // Line separator
-    doc.setDrawColor(230, 230, 230);
-    doc.line(15, 48, 133, 48);
+    setFont("normal", 6.5, textGray);
+    doc.text("Invoice Date", 133, 33.5, { align: "right" });
     
-    // --- BILL TO ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("BILL TO", 15, 56);
-    
-    doc.setFontSize(8);
-    doc.text("Customer", 15, 62);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
+    setFont("bold", 7.5, textBlack);
+    doc.text(dateStr, 133, 37.5, { align: "right" });
+
+    // --- DIVIDER ---
+    doc.setDrawColor(dividerColor[0], dividerColor[1], dividerColor[2]);
+    doc.setLineWidth(0.25);
+    doc.line(15, 43, 133, 43);
+
+    // --- BILL TO vs PAYMENT INFO ---
+    setFont("bold", 7.5, textGray);
+    doc.text("BILL TO", 15, 50);
+    doc.text("PAYMENT INFORMATION", 74, 50);
+
+    // Bill To details
+    setFont("normal", 6.5, textGray);
+    doc.text("Customer", 15, 55);
+    setFont("normal", 8, textBlack);
     const customerName = userDisplayName || 'MarineWorld User';
-    doc.text(customerName.length > 25 ? customerName.substring(0, 25) + '...' : customerName, 15, 66);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Workspace ID", 15, 74);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(`WS-${userId.substring(0,8).toUpperCase()}`, 15, 78);
+    doc.text(customerName.length > 25 ? customerName.substring(0, 25) + '...' : customerName, 15, 58.5);
 
-    // Right Column: PAYMENT INFORMATION
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("PAYMENT INFORMATION", 80, 56);
-    
-    doc.text("Payment Method", 80, 62);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("Credit Card (•••• 4242)", 80, 66);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Payment Provider", 80, 74);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("Stripe", 80, 78);
+    setFont("normal", 6.5, textGray);
+    doc.text("Workspace ID", 15, 64);
+    setFont("normal", 8, textBlack);
+    doc.text(`WS-${userId.substring(0,8).toUpperCase()}`, 15, 67.5);
 
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Transaction ID", 80, 86);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(`TX-${Math.random().toString(36).substring(2,10).toUpperCase()}`, 80, 90);
+    setFont("normal", 6.5, textGray);
+    doc.text("Tax/VAT No:", 15, 73);
+    setFont("normal", 8, textBlack);
+    doc.text("N/A", 15, 76.5);
 
-    // --- INVOICE DETAILS ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("INVOICE DETAILS", 15, 102);
-    
-    doc.setDrawColor(230, 230, 230);
-    doc.line(15, 105, 133, 105);
-    
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("Description", 15, 110);
-    doc.text("Qty", 85, 110, { align: "right" });
-    doc.text("Unit Price", 105, 110, { align: "right" });
-    doc.text("Total", 133, 110, { align: "right" });
-    
-    doc.line(15, 113, 133, 113);
+    // Payment info details
+    setFont("normal", 6.5, textGray);
+    doc.text("Payment Method", 74, 55);
+    setFont("normal", 8, textBlack);
+    doc.text("Credit Card (•••• 4242)", 74, 58.5);
 
-    doc.setFont("helvetica", "normal");
+    setFont("normal", 6.5, textGray);
+    doc.text("Payment Provider", 74, 64);
+    setFont("normal", 8, textBlack);
+    doc.text("Stripe", 74, 67.5);
+
+    setFont("normal", 6.5, textGray);
+    doc.text("Transaction ID", 74, 73);
+    setFont("normal", 8, textBlack);
+    const txId = `TX-${Math.random().toString(36).substring(2,10).toUpperCase()}`;
+    doc.text(txId, 74, 76.5);
+
+    // --- INVOICE DETAILS SECTION ---
+    setFont("bold", 7.5, textGray);
+    doc.text("INVOICE DETAILS", 15, 87);
+
+    // Table Headers
+    setFont("bold", 7.5, textBlack);
+    doc.text("Description", 15, 94);
+    doc.text("Qty", 80, 94, { align: "center" });
+    doc.text("Unit Price", 102, 94, { align: "center" });
+    doc.text("Total", 133, 94, { align: "right" });
+
+    doc.line(15, 96, 133, 96);
+
+    // Table Row
+    setFont("normal", 8, textBlack);
     const itemDesc = invoice.plan || "Service Pack";
-    doc.text(itemDesc.length > 40 ? itemDesc.substring(0, 37) + '...' : itemDesc, 15, 119);
-    doc.text("1", 85, 119, { align: "right" });
-    doc.text(formatToUSD(invoice.amount), 105, 119, { align: "right" });
-    doc.text(formatToUSD(invoice.amount), 133, 119, { align: "right" });
-    
-    doc.line(15, 123, 133, 123);
+    doc.text(itemDesc.length > 40 ? itemDesc.substring(0, 37) + '...' : itemDesc, 15, 102);
+    doc.text("1", 80, 102, { align: "center" });
+    doc.text(formatToUSD(invoice.amount), 102, 102, { align: "center" });
+    doc.text(formatToUSD(invoice.amount), 133, 102, { align: "right" });
 
-    // --- SUMMARY ---
-    // Shaded box for summary
-    doc.setFillColor(248, 249, 250);
-    doc.rect(75, 128, 62, 38, "F");
-    
-    doc.setFontSize(8);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Subtotal", 80, 135);
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(formatToUSD(invoice.amount), 133, 135, { align: "right" });
-    
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Tax", 80, 143);
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("USD 0.00", 133, 143, { align: "right" });
-    
-    doc.setDrawColor(220, 220, 220);
-    doc.line(80, 147, 133, 147);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Total", 80, 153);
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text(formatToUSD(invoice.amount), 133, 153, { align: "right" });
-    
-    doc.setFontSize(10);
-    doc.setTextColor(colorAccent[0], colorAccent[1], colorAccent[2]);
-    doc.text("Amount Paid", 80, 161);
-    doc.text(formatToUSD(invoice.amount), 133, 161, { align: "right" });
+    doc.line(15, 105, 133, 105);
 
-    // PAID badge
-    doc.setFillColor(colorGreen[0], colorGreen[1], colorGreen[2]);
-    doc.roundedRect(15, 128, 24, 8, 1, 1, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.text("PAID", 27, 134, { align: "center" });
+    // --- TOTALS CONTAINER ---
+    doc.setFillColor(248, 250, 252);
+    doc.rect(74, 112, 59, 36, "F");
 
-    // Mock QR Code
-    const qrX = 117;
-    const qrY = 170;
-    doc.setFillColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.rect(qrX, qrY, 16, 16);
-    doc.setFillColor(255, 255, 255);
-    doc.rect(qrX + 2, qrY + 2, 12, 12, "F");
-    doc.setFillColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.rect(qrX + 3, qrY + 3, 3, 3, "F");
-    doc.rect(qrX + 10, qrY + 3, 3, 3, "F");
-    doc.rect(qrX + 3, qrY + 10, 3, 3, "F");
-    doc.rect(qrX + 10, qrY + 10, 1.5, 1.5, "F");
-    doc.rect(qrX + 11.5, qrY + 11.5, 1.5, 1.5, "F");
-    
-    doc.setFontSize(6);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Scan to verify", qrX + 8, qrY + 19, { align: "center" });
+    // Row 1: Subtotal
+    setFont("normal", 7.5, textGray);
+    doc.text("Subtotal", 78, 118);
+    setFont("normal", 7.5, textBlack);
+    doc.text(formatToUSD(invoice.amount), 129, 118, { align: "right" });
 
-    // --- FOOTER ---
-    doc.setDrawColor(230, 230, 230);
-    doc.line(15, 192, 133, 192);
-    
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-    doc.text("MarineWorld Contract Studio", 15, 198);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-    doc.text("Enterprise Contract Operating System", 15, 202);
-    doc.text("Invoice generated automatically. No signature required.", 15, 206);
-    
-    doc.text("support@marineworld.city", 133, 198, { align: "right" });
-    doc.text("Contract Studio Workspace", 133, 202, { align: "right" });
-    
+    // Row 2: Tax
+    setFont("normal", 7.5, textGray);
+    doc.text("Tax", 78, 124);
+    setFont("normal", 7.5, textBlack);
+    doc.text("USD 0.00", 129, 124, { align: "right" });
+
+    // Inner Divider
+    doc.line(78, 128, 129, 128);
+
+    // Row 3: Total
+    setFont("normal", 7.5, textGray);
+    doc.text("Total", 78, 134);
+    setFont("normal", 7.5, textBlack);
+    doc.text(formatToUSD(invoice.amount), 129, 134, { align: "right" });
+
+    // Row 4: Amount Paid
+    setFont("bold", 8, textBlack);
+    doc.text("Amount Paid", 78, 141);
+    doc.text(formatToUSD(invoice.amount), 129, 141, { align: "right" });
+
+    // --- FOOTER DIVIDER ---
+    doc.line(15, 165, 133, 165);
+
+    // --- FOOTER LEFT ---
+    setFont("bold", 7, textBlack);
+    doc.text("Web 4.0 OS.", 15, 171);
+    setFont("normal", 6, textGray);
+    doc.text("1309 Coffeen Avenue STE 14949", 15, 175);
+    doc.text("Sheridan Wyoming 82801 - United States", 15, 178.5);
+
+    // --- FOOTER RIGHT ---
+    setFont("bold", 7, textBlack);
+    doc.text("MarineWorld Contract Studio", 74, 171);
+    setFont("normal", 6, textGray);
+    doc.text("A product of Web 4.0 OS - Wyoming,USA", 74, 175);
+    doc.text("Thank you for your business.", 74, 178.5);
+
+    // --- FOOTER CENTER BOTTOM ---
+    setFont("normal", 6.5, textGray);
+    doc.text("support@marineworld.city", 74, 192, { align: "center" });
+
     doc.save(`Invoice_${invoice.invoiceNumber || 'INV'}.pdf`);
 
     await logAuditEvent(userId, `Simulated download of invoice receipt ${invoice.invoiceNumber} for amount ${invoice.amount}`, "Billing & Ledgers");
@@ -415,7 +390,7 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
                   </tr>
                 ) : invoices.length > 0 ? (
                   invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-[#2B3347] transition-colors">
+                    <tr key={inv.id} className="hover:bg-[#2B3347] transition-colors cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
                       <td className="py-3 px-2 text-white font-bold">{inv.invoiceNumber}</td>
                     <td className="py-3 px-2 text-[#80868B]">
                       {inv.date ? (typeof inv.date === 'string' ? inv.date : (inv.date as any).toDate?.().toLocaleDateString() || String(inv.date)) : 'N/A'}
@@ -451,6 +426,55 @@ export default function BillingView({ userId, userDisplayName }: BillingViewProp
           </div>
         </div>
       </div>
+
+      {selectedInvoice && (() => {
+        const amtUSD = formatToUSD(selectedInvoice.amount);
+        const itemDesc = selectedInvoice.plan || selectedInvoice.description || 'Workspace Plan Subscription';
+        
+        const custName = selectedInvoice.customerName || userDisplayName || auth.currentUser?.displayName || auth.currentUser?.email || 'Ali';
+        const wsId = selectedInvoice.workspaceId || `WS-${userId.substring(0, 8).toUpperCase()}`;
+        const txId = selectedInvoice.transactionId || `TX-${selectedInvoice.id.substring(0, 8).toUpperCase()}`;
+        const pMethod = selectedInvoice.paymentMethod || 'Credit Card (•••• 4242)';
+        const pProvider = selectedInvoice.paymentProvider || 'Stripe';
+        const tNo = selectedInvoice.taxNo || 'N/A';
+
+        return (
+          <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-sm">
+            <div className="relative w-full max-w-3xl my-8">
+              <Invoice
+                invoiceNo={selectedInvoice.invoiceNumber}
+                invoiceDate={selectedInvoice.date}
+                customerName={custName}
+                workspaceId={wsId}
+                taxNo={tNo}
+                paymentMethod={pMethod}
+                paymentProvider={pProvider}
+                transactionId={txId}
+                items={[{
+                  description: itemDesc,
+                  qty: 1,
+                  unitPrice: amtUSD,
+                  total: amtUSD
+                }]}
+                subtotal={amtUSD}
+                tax="USD 0.00"
+                totalAmount={amtUSD}
+                amountPaid={amtUSD}
+                onClose={() => setSelectedInvoice(null)}
+                actionButton={
+                  <button
+                    onClick={() => handleDownloadInvoice(selectedInvoice)}
+                    className="px-6 py-2.5 font-bold text-[#171B26] bg-[#00D4FF] hover:bg-[#33DDFF] transition-colors uppercase tracking-widest text-[10px] rounded font-mono flex items-center gap-1.5"
+                  >
+                    <Download size={11} /> Download PDF
+                  </button>
+                }
+              />
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }

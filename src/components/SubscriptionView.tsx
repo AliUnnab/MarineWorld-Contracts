@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, logAuditEvent } from '../../services/firebase-service';
+import { auth, db, logAuditEvent } from '../../services/firebase-service';
 import { doc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp, setDoc } from 'firebase/firestore';
 import { 
   Award, Check, Sparkles, RefreshCw, Loader2, Calendar, 

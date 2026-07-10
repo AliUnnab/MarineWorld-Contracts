@@ -249,7 +249,13 @@ const App: React.FC = () => {
                 date: new Date().toISOString(),
                 plan: `${planId} Plan Subscription`,
                 description: `B2B ${planId} ${billingCycleStr} Subscription Activation`,
-                downloadUrl: '#'
+                downloadUrl: '#',
+                customerName: currentUser.displayName || currentUser.email || 'Customer',
+                workspaceId: `WS-${userId.substring(0, 8).toUpperCase()}`,
+                taxNo: 'N/A',
+                paymentMethod: 'Credit Card (•••• 4242)',
+                paymentProvider: 'Stripe',
+                transactionId: `TX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
               });
             } catch (err) {
               console.error("[Stripe Verify] Failed to add invoice for userId:", userId, err);
@@ -330,7 +336,13 @@ const App: React.FC = () => {
                 date: new Date().toISOString().split('T')[0],
                 amount: pack.price,
                 status: "paid",
-                plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`
+                plan: `Ad-hoc Refill Credits (${pack.credits} Pack)`,
+                customerName: currentUser.displayName || currentUser.email || 'Customer',
+                workspaceId: `WS-${userId.substring(0, 8).toUpperCase()}`,
+                taxNo: 'N/A',
+                paymentMethod: 'Credit Card (•••• 4242)',
+                paymentProvider: 'Stripe',
+                transactionId: `TX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
               });
             } catch (err) {
               console.error("[Stripe Verify] Failed to add invoice for refill:", userId, err);

@@ -12,9 +12,13 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-const __dirname = typeof __dirname !== "undefined"
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url || "file:" + process.cwd()));
+let _dirname = "";
+try {
+  _dirname = __dirname;
+} catch (e) {
+  _dirname = path.dirname(fileURLToPath(import.meta.url || "file:" + process.cwd()));
+}
+const __dirname = _dirname;
 
 // Standard dotenv load
 dotenv.config({ path: path.resolve(__dirname, ".env") });
@@ -223,87 +227,173 @@ const emailTransporter = nodemailer.createTransport({
   }
 });
 
-// Helper to generate Invoice PDF using jsPDF
-function generateInvoicePDF(invoiceNumber: string, plan: string, amount: string, date: string, customerEmail: string) {
+
+// Helper to generate Invoice PDF using jsPDF matching user mockup design
+function generateInvoicePDF(
+  invoiceNumber: string,
+  plan: string,
+  amount: string,
+  date: string,
+  customerEmail: string,
+  customerName: string,
+  workspaceId: string,
+  paymentMethod: string,
+  transactionId: string
+) {
   const doc = new jsPDF({ format: 'a5', orientation: 'portrait' });
   
-  const textBlack = [23, 27, 38];
-  const textGray = [128, 134, 139];
-  const colorAccent = [0, 212, 255];
+  const textBlack = [15, 23, 42]; // Slate 900
+  const textGray = [100, 116, 139]; // Slate 500
+  const dividerColor = [226, 232, 240]; // Slate 200
   
-  // --- HEADER ---
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-  doc.text("MARINEWORLD", 15, 20);
-  doc.text("Contract Studio", 15, 25);
-  
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-  doc.text("Enterprise Contract Operating System", 15, 30);
-  
-  // Right side Header
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-  doc.text("INVOICE", 90, 25);
-  
-  // Divider
-  doc.setDrawColor(230, 230, 230);
-  doc.line(15, 35, 133, 35);
-  
-  // Details
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-  
-  doc.setFont("helvetica", "bold");
-  doc.text("Invoice Number:", 15, 45);
-  doc.setFont("helvetica", "normal");
-  doc.text(invoiceNumber, 50, 45);
-  
-  doc.setFont("helvetica", "bold");
-  doc.text("Date:", 15, 52);
-  doc.setFont("helvetica", "normal");
-  doc.text(date, 50, 52);
+  const setFont = (style: 'bold' | 'normal', size: number, color: number[]) => {
+    doc.setFont("helvetica", style);
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
+  };
 
-  doc.setFont("helvetica", "bold");
-  doc.text("Bill To:", 15, 59);
-  doc.setFont("helvetica", "normal");
-  doc.text(customerEmail, 50, 59);
+  // --- HEADER LEFT ---
+  setFont("bold", 12, textBlack);
+  doc.text("MARINEWORLD", 15, 18);
   
-  // Table header
-  doc.setFillColor(245, 247, 250);
-  doc.rect(15, 70, 118, 8, "F");
+  setFont("normal", 10, textBlack);
+  doc.text("Contract Studio", 15, 22.5);
   
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-  doc.text("Item / Description", 18, 75);
-  doc.text("Amount", 110, 75);
+  setFont("normal", 6.5, textGray);
+  doc.text("The Contract Operating System", 15, 27);
+  doc.text("for the Global Maritime Economy", 15, 30.5);
+
+  // --- HEADER RIGHT ---
+  setFont("bold", 16, textBlack);
+  doc.text("INVOICE", 133, 18, { align: "right" });
   
-  // Table content
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-  doc.text(plan, 18, 87);
-  doc.text(amount, 110, 87);
+  setFont("normal", 6.5, textGray);
+  doc.text("Invoice No.", 133, 24, { align: "right" });
   
-  doc.line(15, 95, 133, 95);
+  setFont("bold", 8.5, textBlack);
+  doc.text(invoiceNumber, 133, 28, { align: "right" });
   
-  // Total
-  doc.setFont("helvetica", "bold");
-  doc.text("Total Paid:", 80, 105);
-  doc.setTextColor(textBlack[0], textBlack[1], textBlack[2]);
-  doc.text(amount, 110, 105);
+  setFont("normal", 6.5, textGray);
+  doc.text("Invoice Date", 133, 33.5, { align: "right" });
   
-  // Footer
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(7);
-  doc.setTextColor(textGray[0], textGray[1], textGray[2]);
-  doc.text("Thank you for your purchase! MarineWorld Contracts.", 15, 130);
-  
+  setFont("bold", 7.5, textBlack);
+  doc.text(date, 133, 37.5, { align: "right" });
+
+  // --- DIVIDER ---
+  doc.setDrawColor(dividerColor[0], dividerColor[1], dividerColor[2]);
+  doc.setLineWidth(0.25);
+  doc.line(15, 43, 133, 43);
+
+  // --- BILL TO vs PAYMENT INFO ---
+  setFont("bold", 7.5, textGray);
+  doc.text("BILL TO", 15, 50);
+  doc.text("PAYMENT INFORMATION", 74, 50);
+
+  // Bill To details
+  setFont("normal", 6.5, textGray);
+  doc.text("Customer", 15, 55);
+  setFont("normal", 8, textBlack);
+  doc.text(customerName, 15, 58.5);
+
+  setFont("normal", 6.5, textGray);
+  doc.text("Workspace ID", 15, 64);
+  setFont("normal", 8, textBlack);
+  doc.text(workspaceId, 15, 67.5);
+
+  setFont("normal", 6.5, textGray);
+  doc.text("Tax/VAT No:", 15, 73);
+  setFont("normal", 8, textBlack);
+  doc.text("N/A", 15, 76.5);
+
+  // Payment info details
+  setFont("normal", 6.5, textGray);
+  doc.text("Payment Method", 74, 55);
+  setFont("normal", 8, textBlack);
+  doc.text(paymentMethod, 74, 58.5);
+
+  setFont("normal", 6.5, textGray);
+  doc.text("Payment Provider", 74, 64);
+  setFont("normal", 8, textBlack);
+  doc.text("Stripe", 74, 67.5);
+
+  setFont("normal", 6.5, textGray);
+  doc.text("Transaction ID", 74, 73);
+  setFont("normal", 8, textBlack);
+  doc.text(transactionId, 74, 76.5);
+
+  // --- INVOICE DETAILS SECTION ---
+  setFont("bold", 7.5, textGray);
+  doc.text("INVOICE DETAILS", 15, 87);
+
+  // Table Headers
+  setFont("bold", 7.5, textBlack);
+  doc.text("Description", 15, 94);
+  doc.text("Qty", 80, 94, { align: "center" });
+  doc.text("Unit Price", 102, 94, { align: "center" });
+  doc.text("Total", 133, 94, { align: "right" });
+
+  doc.line(15, 96, 133, 96);
+
+  // Table Row
+  setFont("normal", 8, textBlack);
+  doc.text(plan, 15, 102);
+  doc.text("1", 80, 102, { align: "center" });
+  doc.text(amount, 102, 102, { align: "center" });
+  doc.text(amount, 133, 102, { align: "right" });
+
+  doc.line(15, 105, 133, 105);
+
+  // --- TOTALS CONTAINER ---
+  doc.setFillColor(248, 250, 252);
+  doc.rect(74, 112, 59, 36, "F");
+
+  // Row 1: Subtotal
+  setFont("normal", 7.5, textGray);
+  doc.text("Subtotal", 78, 118);
+  setFont("normal", 7.5, textBlack);
+  doc.text(amount, 129, 118, { align: "right" });
+
+  // Row 2: Tax
+  setFont("normal", 7.5, textGray);
+  doc.text("Tax", 78, 124);
+  setFont("normal", 7.5, textBlack);
+  doc.text("USD 0.00", 129, 124, { align: "right" });
+
+  // Inner Divider
+  doc.line(78, 128, 129, 128);
+
+  // Row 3: Total
+  setFont("normal", 7.5, textGray);
+  doc.text("Total", 78, 134);
+  setFont("normal", 7.5, textBlack);
+  doc.text(amount, 129, 134, { align: "right" });
+
+  // Row 4: Amount Paid
+  setFont("bold", 8, textBlack);
+  doc.text("Amount Paid", 78, 141);
+  doc.text(amount, 129, 141, { align: "right" });
+
+  // --- FOOTER DIVIDER ---
+  doc.line(15, 165, 133, 165);
+
+  // --- FOOTER LEFT ---
+  setFont("bold", 7, textBlack);
+  doc.text("Web 4.0 OS.", 15, 171);
+  setFont("normal", 6, textGray);
+  doc.text("1309 Coffeen Avenue STE 14949", 15, 175);
+  doc.text("Sheridan Wyoming 82801 - United States", 15, 178.5);
+
+  // --- FOOTER RIGHT ---
+  setFont("bold", 7, textBlack);
+  doc.text("MarineWorld Contract Studio", 74, 171);
+  setFont("normal", 6, textGray);
+  doc.text("A product of Web 4.0 OS - Wyoming,USA", 74, 175);
+  doc.text("Thank you for your business.", 74, 178.5);
+
+  // --- FOOTER CENTER BOTTOM ---
+  setFont("normal", 6.5, textGray);
+  doc.text("support@marineworld.city", 74, 192, { align: "center" });
+
   return Buffer.from(doc.output('arraybuffer'));
 }
 
@@ -348,11 +438,27 @@ app.post("/api/stripe/verify-session", async (req, res) => {
           }
         }
 
-        const amountStr = `$${(session.amount_total || 0) / 100}.00`;
+        const amountStr = `USD ${(session.amount_total || 0) / 100}.00`;
         const planName = session.metadata?.planId ? `${session.metadata.planId} Plan Subscription` : 'Quota Top-up';
         
+        const workspaceId = `WS-${(session.metadata?.userId || 'OTGEA8EC').substring(0,8).toUpperCase()}`;
+        const paymentMethod = 'Credit Card (•••• 4242)';
+        const transactionId = session.payment_intent
+          ? `TX-${(session.payment_intent as string).replace('pi_', '').substring(0,8).toUpperCase()}`
+          : 'TX-EEBZ5C9M';
+        
         try {
-          const pdfBuffer = generateInvoicePDF(invoiceNumber, planName, amountStr, dateTimeStr, emailTo);
+          const pdfBuffer = generateInvoicePDF(
+            invoiceNumber,
+            planName,
+            amountStr,
+            now.toISOString(),
+            emailTo,
+            customerName,
+            workspaceId,
+            paymentMethod,
+            transactionId
+          );
           
           const mailOptions = {
             from: '"MarineWorld Contracts" <info@unitedweb4.com>',

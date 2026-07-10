@@ -5,6 +5,7 @@ import { auth } from '../../services/firebase-service';
 import { signOut } from 'firebase/auth';
 import PaymentModal from './PaymentModal';
 import { StripeService } from '../services/stripe-service';
+import { Check } from 'lucide-react';
 
 interface OnboardingPricingProps {
   userId: string;
@@ -22,34 +23,71 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
   const plans = [
     {
       id: 'Starter',
+      name: 'Starter',
       priceMonthly: 29,
       priceAnnual: 24, // equivalent monthly
       totalAnnualPrice: 290,
+      equivalentMonthly: 'USD 24.17',
       subtitle: 'For Independent Maritime Professionals',
       credits: 500,
       desc: 'Ideal for consultants, surveyors, brokers and independent maritime service providers.',
-      features: ['1 Workspace User', '500 Operational Credits', 'Contract Repository', 'Version History', 'Standard Templates', 'Secure Workspace Environment', 'Email Support']
+      features: [
+        '1 Workspace User',
+        '500 AI Operational Credits / Month',
+        '100 Email Notifications / Month',
+        'Unlimited Contracts',
+        'Unlimited PDF Generation',
+        'Registry & SHA-256 Verification'
+      ],
+      idealFor: 'Independent consultants, surveyors and maritime brokers.',
+      cta: 'Start Workspace',
+      popular: false
     },
     {
       id: 'Professional',
+      name: 'Professional',
       priceMonthly: 99,
       priceAnnual: 82, // equivalent monthly
       totalAnnualPrice: 990,
+      equivalentMonthly: 'USD 82.50',
       subtitle: 'For Maritime Companies',
       credits: 2500,
-      isPopular: true,
       desc: 'Built for growing maritime businesses managing commercial and operational agreements.',
-      features: ['3 Workspace Users', '2,500 Operational Credits', 'Contract Repository', 'Approval Workflows', 'Risk Analysis', 'Compliance Review', 'Priority Support']
+      features: [
+        '3 Workspace Users',
+        '2,500 AI Operational Credits / Month',
+        '1,000 Email Notifications / Month',
+        'Approval Workflows',
+        'AI Risk Analysis',
+        'Compliance Review',
+        'Registry & SHA-256 Verification'
+      ],
+      idealFor: 'Growing maritime companies and commercial operators.',
+      cta: 'Start Workspace',
+      popular: true
     },
     {
       id: 'Enterprise',
+      name: 'Enterprise',
       priceMonthly: 299,
       priceAnnual: 249, // equivalent monthly
       totalAnnualPrice: 2990,
+      equivalentMonthly: 'USD 249.17',
       subtitle: 'For Shipyards, Fleet Operators & Corporate Groups',
       credits: 10000,
       desc: 'Designed for organizations managing high-volume maritime contract operations.',
-      features: ['Unlimited Workspace Users', '10,000 Operational Credits', 'Advanced Repository Controls', 'Governance Workflows', 'Role-Based Permissions', 'Audit Traceability', 'Dedicated Support']
+      features: [
+        'Unlimited Workspace Users',
+        '10,000 AI Operational Credits / Month',
+        '5,000 Email Notifications / Month',
+        'Governance Workflows',
+        'Audit Traceability',
+        'Dedicated Support',
+        'Custom Credit Allocations'
+      ],
+      idealFor: 'Enterprise organizations operating multiple teams and large contract portfolios.',
+      cta: 'Contact Sales',
+      popular: false
     }
   ];
 
@@ -131,78 +169,131 @@ export default function OnboardingPricing({ userId, onPaymentSuccess, onLogout }
       </div>
 
       {/* Billing Cycle Toggle */}
-      <div className="flex justify-center mb-8">
-        <div className="bg-[#202636] p-1 rounded-lg border border-[#2B3347] inline-flex">
-          <button
-            onClick={() => setBillingCycle('monthly')}
-            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest font-mono transition-all ${
-              billingCycle === 'monthly' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
-            }`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBillingCycle('annual')}
-            className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest font-mono transition-all flex items-center gap-1.5 ${
-              billingCycle === 'annual' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
-            }`}
-          >
-            Annual <span className="text-[8px] bg-black/25 px-1.5 py-0.5 rounded text-inherit">Save ~2 Months</span>
-          </button>
+      <div className="flex flex-col items-center mb-12">
+        <div className="relative mb-3">
+          {/* Best Value Badge above "Annual • Save 2 Months" */}
+          {billingCycle === 'annual' && (
+            <div className="absolute -top-6 right-2 animate-in fade-in slide-in-from-bottom-1 duration-300">
+              <span className="text-[8px] font-bold text-[#00D4FF] border border-[#00D4FF]/20 bg-[#00D4FF]/5 px-2 py-0.5 rounded uppercase tracking-widest font-mono">
+                ✓ Best Value
+              </span>
+            </div>
+          )}
+          <div className="bg-[#202636] p-1 rounded-lg border border-[#2B354D] inline-flex items-center">
+            <button
+              onClick={() => setBillingCycle('monthly')}
+              className={`px-5 py-2 rounded-md text-[11px] font-bold transition-all duration-200 cursor-pointer ${
+                billingCycle === 'monthly' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBillingCycle('annual')}
+              className={`px-5 py-2 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center gap-1.5 cursor-pointer ${
+                billingCycle === 'annual' ? 'bg-[#00D4FF] text-[#040B18]' : 'text-[#80868B] hover:text-white'
+              }`}
+            >
+              Annual • Save 2 Months
+            </button>
+          </div>
         </div>
+        
+        {/* Savings Message */}
+        <p className="text-[10px] text-[#80868B] font-mono uppercase tracking-wider text-center max-w-md">
+          Annual plans include the equivalent of two months free compared to monthly billing.
+        </p>
       </div>
 
-      {/* Grid: 3 columns, more compact and "uygun ölçüde" */}
-      <div className="grid md:grid-cols-3 gap-4 w-full max-w-5xl mb-8">
+      {/* Grid: 3 columns matching LandingPage */}
+      <div className="grid md:grid-cols-3 gap-6 w-full max-w-5xl mb-8 items-stretch">
         {plans.map((plan) => {
-          const displayPrice = getPlanPrice(plan);
           const isSelected = selectedPlan === plan.id;
+          const isPopular = plan.popular;
+          const isMonthly = billingCycle === 'monthly';
+          const displayPrice = isMonthly ? `USD ${plan.priceMonthly}` : `USD ${plan.totalAnnualPrice}`;
+          const displayPeriod = isMonthly ? '/ Month' : '/ Year';
 
           return (
             <div 
               key={plan.id}
               onClick={() => setSelectedPlan(plan.id)}
-              className={`relative bg-[#202636] border cursor-pointer transition-all rounded-lg p-4 flex flex-col justify-between min-h-[350px] ${
+              className={`p-6 md:p-8 rounded-2xl transition-all duration-300 flex flex-col justify-between cursor-pointer ${
                 isSelected 
-                  ? 'border-[#00D4FF] shadow-[0_0_12px_rgba(0,212,255,0.08)] bg-[#242B3A]' 
-                  : 'border-[#2B3347] hover:border-[#00D4FF]/30 hover:bg-[#2B3347]'
+                  ? 'border-2 border-[#00D4FF] shadow-[0_0_30px_rgba(0,212,255,0.25)] bg-[#1F293F] scale-102 relative md:-translate-y-2'
+                  : isPopular 
+                    ? 'bg-gradient-to-b from-[#1F293F] to-[#151D2C] border-2 border-[#00D4FF]/40 hover:border-[#00D4FF] shadow-[0_0_20px_rgba(0,212,255,0.08)] scale-102 relative md:-translate-y-2' 
+                    : 'bg-gradient-to-b from-[#1C2233] to-[#111622] border border-[#2B354D] hover:border-[#00D4FF]/40 shadow-xl hover:-translate-y-1'
               }`}
             >
               <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-manrope font-semibold text-sm text-white uppercase tracking-wide">{plan.id}</h3>
-                  {plan.isPopular && (
-                    <span className="text-[7px] bg-[#00D4FF]/10 text-[#00D4FF] px-1.5 py-0.5 rounded border border-[#00D4FF]/20 font-bold uppercase tracking-wider font-mono">Popular</span>
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-manrope font-bold text-white tracking-wide">{plan.name}</h3>
+                  {isPopular && (
+                    <span className="text-[9px] font-bold bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20 px-2 py-0.5 rounded tracking-wide font-mono uppercase">
+                      Best Value
+                    </span>
                   )}
                 </div>
-                <p className="text-[9px] text-[#BBC0C4] font-medium leading-normal min-h-[28px] uppercase font-mono">{plan.subtitle}</p>
 
-                <div className="my-3 border-b border-[#2B3347] pb-3">
-                  <div className="flex items-baseline">
-                    <span className="text-2xl font-extrabold text-white font-mono">${displayPrice}</span>
-                    <span className="text-[9px] text-[#80868B] ml-1 uppercase font-mono">/ Month</span>
+                <div className="flex items-baseline gap-1.5 mb-1">
+                  <span className="text-3xl font-manrope font-extrabold text-[#E8EAED] tracking-tight">
+                    {displayPrice}
+                  </span>
+                  <span className="text-xs text-[#BBC0C4] font-medium font-mono">
+                    {displayPeriod}
+                  </span>
+                </div>
+
+                {/* Secondary line for Annual equivalent pricing */}
+                {!isMonthly && (
+                  <div className="text-[10px] text-[#BBC0C4]/80 font-mono mt-0.5 mb-3 lowercase tracking-wider animate-in fade-in duration-200">
+                    equivalent to only <span className="text-[#00D4FF] font-bold">{plan.equivalentMonthly}</span>/month
                   </div>
-                  {billingCycle === 'annual' && (
-                    <p className="text-[8px] text-[#00D68F] uppercase tracking-wider font-mono mt-0.5">Billed ${plan.totalAnnualPrice} / year</p>
-                  )}
+                )}
+
+                <div className="text-[11px] text-[#00D4FF] font-mono min-h-[24px] flex items-center mb-4">
+                  {isMonthly ? 'Billed monthly' : `Billed USD ${plan.totalAnnualPrice} / year`}
+                </div>
+                
+                <hr className="my-4 border-white/5 animate-none" />
+
+                <div className="mb-6">
+                  <p className="text-[11px] font-bold text-[#80868B] uppercase tracking-wider mb-2 font-mono">
+                    Ideal for:
+                  </p>
+                  <p className="text-xs text-[#BBC0C4] leading-relaxed mb-4 text-left font-sans">
+                    {plan.idealFor}
+                  </p>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-[8px] font-bold text-[#80868B] uppercase mb-2 tracking-wider font-mono">Included Features:</p>
-                  <ul className="space-y-1.5">
-                    {plan.features.slice(0, 5).map((feature, i) => (
-                      <li key={i} className="flex items-start text-[10px] text-[#BBC0C4] before:content-['•'] before:mr-2 before:text-[#00D4FF]">
-                        <span className="leading-tight uppercase tracking-tight font-mono">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              
-              <div className="pt-3 border-t border-[#2B3347] mt-auto">
-                <p className="text-[8px] text-[#80868B] leading-normal uppercase tracking-wider font-mono">
-                  {plan.desc}
+                <p className="text-[11px] font-bold text-[#80868B] uppercase tracking-wider mb-3 font-mono">
+                  Includes:
                 </p>
+                <ul className="space-y-2.5 mb-6">
+                  {plan.features.map((f, fIdx) => (
+                    <li key={fIdx} className="flex gap-2.5 text-xs text-[#BBC0C4] items-start">
+                      <Check size={13} className="text-[#00D4FF] shrink-0 mt-0.5" />
+                      <span className="leading-tight text-left font-sans">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedPlan(plan.id);
+                  }}
+                  className={`w-full h-11 rounded-lg text-xs font-bold transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-[#00D4FF] text-[#040B18] shadow-[0_4px_12px_rgba(0,212,255,0.2)]'
+                      : 'bg-[#202636] hover:bg-[#2B354D] text-white border border-[#2B354D]'
+                  }`}
+                >
+                  {isSelected ? "Selected" : "Select Plan"}
+                </button>
               </div>
             </div>
           );

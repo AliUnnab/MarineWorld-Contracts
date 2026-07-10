@@ -112,7 +112,13 @@ export default function SettingsView({ userId }: SettingsViewProps) {
           date: new Date().toISOString(),
           plan: `${subData.plan} Plan Subscription`,
           description: `B2B ${subData.plan} Subscription Activation`,
-          downloadUrl: '#'
+          downloadUrl: '#',
+          customerName: profile?.displayName || profile?.email || 'Customer',
+          workspaceId: `WS-${userId.substring(0, 8).toUpperCase()}`,
+          taxNo: 'N/A',
+          paymentMethod: 'Credit Card (•••• 4242)',
+          paymentProvider: 'Stripe',
+          transactionId: `TX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
         });
 
         await addDoc(collection(db, 'credit_transactions'), {

@@ -37,7 +37,7 @@ service cloud.firestore {
       allow write: if isOwnerOrTeammate(userId);
     }
     match /workspace_notes/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwnerOrTeammate(userId);
     }
     
     // Stripe Session processing
@@ -67,9 +67,9 @@ service cloud.firestore {
     match /contracts/{contractId} {
       // Sandbox: We allow public read for execution portal, assuming ID is unguessable token
       allow read: if true; 
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if (isSignedIn() && resource.data.userId == request.auth.uid) || 
+      allow delete: if isSignedIn() && isOwnerOrTeammate(resource.data.userId);
+      allow create: if isSignedIn() && isOwnerOrTeammate(request.resource.data.userId);
+      allow update: if (isSignedIn() && isOwnerOrTeammate(resource.data.userId)) || 
                     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'version', 'documentHash', 'partyASigned', 'partyBSigned', 'additionalSigned', 'updatedAt', 'revisions']));
       
       match /deployments/{deploymentId} {
@@ -116,27 +116,27 @@ service cloud.firestore {
 
     // Company sub-collections (Nested under companyId which is userId)
     match /companies/{companyId} {
-      allow read, write: if isOwner(companyId);
+      allow read, write: if isOwnerOrTeammate(companyId);
       
       match /offerings/{offeringId} {
-        allow read, write: if isOwner(companyId);
+        allow read, write: if isOwnerOrTeammate(companyId);
       }
       match /commercial_workflows/{workflowId} {
-        allow read, write: if isOwner(companyId);
+        allow read, write: if isOwnerOrTeammate(companyId);
       }
       match /documents/{documentId} {
-        allow read, write: if isOwner(companyId);
+        allow read, write: if isOwnerOrTeammate(companyId);
       }
       match /requests/{requestId} {
-        allow read, write: if isOwner(companyId);
+        allow read, write: if isOwnerOrTeammate(companyId);
       }
       match /agent_context/{contextId} {
-        allow read, write: if isOwner(companyId);
+        allow read, write: if isOwnerOrTeammate(companyId);
       }
       match /copilot_sessions/{contractId} {
-         allow read, write: if isOwner(companyId);
+         allow read, write: if isOwnerOrTeammate(companyId);
          match /messages/{messageId} {
-           allow read, write: if isOwner(companyId);
+           allow read, write: if isOwnerOrTeammate(companyId);
          }
       }
     }
