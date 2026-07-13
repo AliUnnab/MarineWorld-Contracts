@@ -47,13 +47,13 @@ service cloud.firestore {
 
     // Financial Records (Immutable, restricted by userId in document)
     match /credit_transactions/{txId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
+      allow read: if isOwnerOrTeammate(resource.data.userId);
+      allow create: if isOwnerOrTeammate(request.resource.data.userId);
       allow update, delete: if false;
     }
     match /invoices/{invoiceId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
+      allow read: if isOwnerOrTeammate(resource.data.userId);
+      allow create: if isOwnerOrTeammate(request.resource.data.userId);
       allow update, delete: if false;
     }
     
@@ -71,16 +71,17 @@ service cloud.firestore {
       allow create: if isSignedIn() && isOwnerOrTeammate(request.resource.data.userId);
       allow update: if (isSignedIn() && isOwnerOrTeammate(resource.data.userId)) || 
                     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'version', 'documentHash', 'partyASigned', 'partyBSigned', 'additionalSigned', 'updatedAt', 'revisions']));
-      
-      match /deployments/{deploymentId} {
-         allow read: if true;
-         allow write: if isSignedIn() && get(/databases/$(database)/documents/contracts/$(contractId)).data.userId == request.auth.uid;
-         
-         match /recipients/{recipientId} {
-            allow read: if true;
-            allow write: if true; // Unauthenticated users can update their status. (In prod, validate via functions or tokens)
-         }
-      }
+    }
+
+    match /contracts/{contractId}/deployments/{deploymentId} {
+       allow read: if true;
+       allow write: if isOwnerOrTeammate(request.resource.data.userId) ||
+                    (resource != null && isOwnerOrTeammate(resource.data.userId));
+       
+       match /recipients/{recipientId} {
+          allow read: if true;
+          allow write: if true; // Unauthenticated users can update their status
+       }
     }
     match /contract_data/{contractId} {
       allow read, write: if true;
@@ -95,8 +96,8 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
     match /audit_logs/{logId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == resource.data.userId));
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceOwnerId == request.resource.data.userId));
+      allow read: if isOwnerOrTeammate(resource.data.userId);
+      allow create: if isOwnerOrTeammate(request.resource.data.userId);
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid; 
       // Actually audit logs might need to be deleted when user deletes account/settings
     }

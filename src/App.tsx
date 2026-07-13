@@ -163,6 +163,33 @@ const App: React.FC = () => {
         const { userId, planId, mode, billingCycle } = data.metadata;
         console.log("[Stripe Verify] Session verification data success. Metadata:", data.metadata);
 
+        // Ensure company workspace is provisioned (Drive folder & Firestore mapping)
+        try {
+          const companyRef = doc(db, 'companies', currentUser.uid);
+          const companySnap = await getDoc(companyRef);
+          if (!companySnap.exists()) {
+            console.log(`[Stripe Verify] Company workspace not found for ${currentUser.uid}. Provisioning...`);
+            const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
+            const companyName = userDocSnap.exists() ? (userDocSnap.data().companyName || "Corporate Workspace") : "Corporate Workspace";
+            
+            const regResponse = await fetch('/api/companies/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                companyId: currentUser.uid,
+                companyName: companyName
+              })
+            });
+            if (regResponse.ok) {
+              console.log("✅ Company workspace provisioned successfully on payment verification.");
+            } else {
+              console.warn("⚠️ Failed to provision company workspace on payment:", await regResponse.text());
+            }
+          }
+        } catch (provisionErr) {
+          console.error("❌ Error provisioning company workspace during payment verification:", provisionErr);
+        }
+
         if (mode === 'subscription') {
           // Find plan info
           const plans = [

@@ -152,6 +152,10 @@ export default function SettingsView({ userId }: SettingsViewProps) {
     billingAlerts: false
   });
 
+  // Google Drive connection states
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveFolderId, setDriveFolderId] = useState('');
+
   useEffect(() => {
     if (!userId) return;
 
@@ -166,7 +170,23 @@ export default function SettingsView({ userId }: SettingsViewProps) {
       }
     });
 
-    return () => unsubscribe();
+    // Listen to company document for multi-tenant Drive settings
+    const companyRef = doc(db, 'companies', userId);
+    const unsubscribeCompany = onSnapshot(companyRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setDriveConnected(!!data.driveRefreshToken);
+        setDriveFolderId(data.folderId || '');
+      } else {
+        setDriveConnected(false);
+        setDriveFolderId('');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeCompany();
+    };
   }, [userId]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -198,6 +218,31 @@ export default function SettingsView({ userId }: SettingsViewProps) {
       await logAuditEvent(userId, `${nextState ? "Enabled" : "Disabled"} multi-factor (MFA) signature electronic sealing requirements`, "Tenant Configuration Console");
     } catch (err) {
       console.error("MFA toggle commit failed:", err);
+    }
+  };
+
+  const handleConnectDrive = () => {
+    // Redirect to backend OAuth2 entrypoint
+    window.location.href = `/api/auth/google?companyId=${userId}`;
+  };
+
+  const handleDisconnectDrive = async () => {
+    if (!window.confirm("Are you sure you want to disconnect Google Drive? Your contracts and invoices will no longer be backed up.")) {
+      return;
+    }
+    try {
+      const companyRef = doc(db, 'companies', userId);
+      await updateDoc(companyRef, {
+        driveRefreshToken: null,
+        folderId: null,
+        driveWatchChannelId: null,
+        driveWatchResourceId: null,
+        driveWatchExpiration: null
+      });
+      await logAuditEvent(userId, "Disconnected Google Drive Multi-Tenant workspace backup", "Tenant Configuration Console");
+      console.log("Google Drive connection revoked.");
+    } catch (err) {
+      console.error("Failed to disconnect Google Drive:", err);
     }
   };
 
@@ -414,6 +459,56 @@ export default function SettingsView({ userId }: SettingsViewProps) {
               <Check size={14} className="shrink-0 mt-0.5" /> 
               <span>All signatures are cryptographically hashed and anchored to the Global MarineWorld Sovereign Ledger.</span>
             </div>
+          </div>
+        </div>
+
+        {/* SECTION 5: GOOGLE DRIVE INTEGRATION */}
+        <div className="bg-[#202636] rounded-xl border border-[#2B3347] overflow-hidden flex flex-col h-full shadow-lg">
+          <div className="bg-[#171B26] px-5 py-4 border-b border-[#2B3347] flex items-center gap-2.5">
+            <Briefcase size={16} className="text-[#00D4FF]" />
+            <h3 className="text-[11px] font-bold text-white uppercase tracking-widest font-mono">Google Drive Backup</h3>
+          </div>
+          <div className="p-6 space-y-5 flex-1 flex flex-col justify-between">
+            {driveConnected ? (
+              <div className="space-y-4">
+                <div className="p-3.5 bg-[#00D68F]/5 border border-[#00D68F]/10 rounded flex items-start gap-2.5">
+                  <Check size={16} className="text-[#00D68F] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-white uppercase">Google Drive Connected</p>
+                    <p className="text-[10px] text-[#80868B] font-mono mt-0.5 uppercase tracking-tighter">Your workspace is dynamically syncing to your Google Drive.</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] text-[#80868B] uppercase font-bold font-mono mb-1">Target Folder ID</label>
+                  <input
+                    type="text"
+                    value={driveFolderId || ''}
+                    disabled
+                    className="block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-[#80868B] cursor-not-allowed font-mono"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDisconnectDrive}
+                  className="w-full py-2 rounded bg-red-500/10 hover:bg-red-500/20 text-[#F28B82] text-[10px] font-mono uppercase tracking-wider transition-all border border-red-500/20"
+                >
+                  Disconnect Google Drive
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 flex-1 flex flex-col justify-between">
+                <p className="text-xs text-[#BBC0C4] leading-relaxed uppercase tracking-tight">
+                  Connect your personal Google Drive account to securely store all contract backups, invoices, and credit transactions in an isolated workspace folder.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleConnectDrive}
+                  className="w-full py-2.5 rounded bg-[#00D4FF] hover:bg-[#33DDFF] text-[#171B26] text-xs font-bold transition-all uppercase tracking-wider"
+                >
+                  Connect Google Drive
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

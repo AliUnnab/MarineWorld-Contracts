@@ -43,6 +43,27 @@ export async function seedUserDataIfNecessary(
 
   const batchTimestamp = new Date().toISOString();
 
+  // Create Company Isolated Drive Folder & Metadata via Backend
+  try {
+    console.log(`🤖 Requesting backend to register isolated company workspace for: ${companyName}`);
+    const regResponse = await fetch('/api/companies/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyId: userId, // Match user uid for simple mapping
+        companyName: companyName || "Global Trade & Maritime Operations Ltd"
+      })
+    });
+    if (regResponse.ok) {
+      const data = await regResponse.json();
+      console.log(`✅ Backend successfully initialized Drive folder: ${data.folderId}`);
+    } else {
+      console.warn("⚠️ Backend registration endpoint failed:", await regResponse.text());
+    }
+  } catch (err) {
+    console.error("⚠️ Failed to call backend registration service:", err);
+  }
+
   // Create User Profile
   try {
     await setDoc(userProfileRef, {

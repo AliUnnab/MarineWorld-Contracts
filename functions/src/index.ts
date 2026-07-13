@@ -3,10 +3,11 @@ import * as admin from 'firebase-admin';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
-import * as express from 'express';
-import * as cors from 'cors';
+import express from 'express';
+import cors from 'cors';
 import * as nodemailer from 'nodemailer';
 import { jsPDF } from 'jspdf';
+import okfPipelineRouter from './okf-pipeline/pipeline-router';
 
 admin.initializeApp();
 
@@ -23,6 +24,9 @@ app.use(express.json({
     (req as any).rawBody = buf;
   }
 }));
+
+// Mount OKF pipeline router
+app.use("/api", okfPipelineRouter);
 
 // Helper to initialize Stripe from environment secrets
 const getStripe = () => {
@@ -648,6 +652,6 @@ app.post('/webhook', async (req, res) => {
 // EXPORT CLOUD FUNCTIONS
 // ------------------------------------------
 
-export const stripeWebhook = onRequest(app);
+export const stripeWebhook = onRequest({ maxInstances: 10 }, app);
 
-export const api = onRequest(app);
+export const api = onRequest({ maxInstances: 10 }, app);

@@ -14,11 +14,11 @@ import { getFirestore } from "firebase-admin/firestore";
 
 let _dirname = "";
 try {
-  _dirname = __dirname;
+  _dirname = (globalThis as any).__dirname;
 } catch (e) {
   _dirname = path.dirname(fileURLToPath(import.meta.url || "file:" + process.cwd()));
 }
-const __dirname = _dirname;
+const __dirname = _dirname || path.dirname(fileURLToPath(import.meta.url || "file:" + process.cwd()));
 
 // Standard dotenv load
 dotenv.config({ path: path.resolve(__dirname, ".env") });
@@ -78,7 +78,7 @@ if (process.env.FIREBASE_PROJECT_ID && privateKey && process.env.FIREBASE_CLIENT
         privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
         privateKey: privateKey,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      })
+      } as any)
     });
     console.log("✅ Firebase Admin SDK Initialized.");
   } catch (err) {
@@ -97,6 +97,8 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
+
+
 
 // Initialize Stripe if key is provided, else leave null
 const dotenvPath = path.resolve(__dirname, ".env");
@@ -694,6 +696,41 @@ app.post("/api/auth/reset-password", async (req, res) => {
 // ==========================================
 
 async function startServer() {
+  // Initialize nested functions/node_modules copy of firebase-admin to prevent duplicate instance errors locally
+  try {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY
+      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
+      : undefined;
+    const functionsAdmin = await import("./functions/node_modules/firebase-admin/lib/app/index.js");
+    if (functionsAdmin.getApps().length === 0) {
+      functionsAdmin.initializeApp({
+        credential: functionsAdmin.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
+          privateKey: privateKey,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        } as any)
+      });
+      console.log("✅ Firebase Admin SDK (Functions Copy) Initialized.");
+    }
+  } catch (nestedErr) {
+    // Ignore if functions node_modules is not present or cannot be initialized
+  }
+
+  // Dynamically import router to prevent ESM hoisting order initialization errors with environment variables and Firebase Admin SDK
+  const { default: okfPipelineRouter } = await import("./functions/src/okf-pipeline/pipeline-router");
+  app.use("/api", okfPipelineRouter);
+
+  // Start Firestore to Google Drive backup synchronization service
+  try {
+    const { BackupSyncService } = await import("./functions/src/okf-pipeline/sync-service");
+    const backupSyncService = new BackupSyncService();
+    backupSyncService.start();
+    console.log("✅ Google Drive Backup Synchronization Service active.");
+  } catch (err: any) {
+    console.error("❌ Failed to start Google Drive Backup Sync Service:", err.message);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     // Mount Vite middleware for dev
     const vite = await createViteServer({

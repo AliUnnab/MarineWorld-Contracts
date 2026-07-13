@@ -143,6 +143,7 @@ export class RegistryTransactionService {
         const deploymentRef = doc(collection(db, `contracts/${finalContractId}/deployments`));
         finalDeploymentId = deploymentRef.id;
         transaction.set(deploymentRef, {
+          userId: companyId,
           status: 'pending',
           createdAt: new Date().toISOString(),
           currentRevision: 'v4 Final Review',
