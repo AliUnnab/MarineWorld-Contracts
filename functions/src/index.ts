@@ -1,4 +1,5 @@
 import { onRequest } from 'firebase-functions/v2/https';
+import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -20,10 +21,12 @@ app.use(cors({ origin: true }));
 
 // Express JSON body parser (with rawBody support for stripe webhook signature verification)
 app.use(express.json({
+  limit: '100mb',
   verify: (req: any, res, buf) => {
     (req as any).rawBody = buf;
   }
 }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Mount OKF pipeline router
 app.use("/api", okfPipelineRouter);
@@ -655,3 +658,74 @@ app.post('/webhook', async (req, res) => {
 export const stripeWebhook = onRequest({ maxInstances: 10 }, app);
 
 export const api = onRequest({ maxInstances: 10 }, app);
+
+// ------------------------------------------
+// FIRESTORE TRIGGERS FOR BACKUP SYNC (1st Gen)
+// ------------------------------------------
+
+export const onContractWrite = functions.firestore
+  .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+  .document("contracts/{contractId}")
+  .onWrite(async (change, context) => {
+    const contractData = change.after.data();
+    const contractId = context.params.contractId;
+
+    if (!contractData) {
+      console.log(`Document contracts/${contractId} was deleted. Skipping sync.`);
+      return;
+    }
+
+    const companyId = contractData.userId;
+    if (!companyId) {
+      console.warn(`Document contracts/${contractId} has no userId. Skipping sync.`);
+      return;
+    }
+
+    try {
+      const { BackupSyncService } = await import("./okf-pipeline/sync-service");
+      const syncService = new BackupSyncService();
+      await (syncService as any).syncContractToDrive(companyId, contractId, contractData);
+    } catch (err: any) {
+      console.error(`Error in onContractWrite trigger for ${contractId}:`, err);
+    }
+  });
+
+export const onInvoiceCreate = functions.firestore
+  .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+  .document("invoices/{invoiceId}")
+  .onCreate(async (snapshot, context) => {
+    const invoiceData = snapshot.data();
+    const invoiceId = context.params.invoiceId;
+    const companyId = invoiceData?.userId;
+
+    if (!companyId) return;
+
+    try {
+      const { BackupSyncService } = await import("./okf-pipeline/sync-service");
+      const syncService = new BackupSyncService();
+      await (syncService as any).syncInvoiceToDrive(companyId, invoiceId, invoiceData);
+    } catch (err: any) {
+      console.error(`Error in onInvoiceCreate trigger for ${invoiceId}:`, err);
+    }
+  });
+
+export const onTransactionCreate = functions.firestore
+  .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+  .document("credit_transactions/{txId}")
+  .onCreate(async (snapshot, context) => {
+    const txData = snapshot.data();
+    const txId = context.params.txId;
+    const companyId = txData?.userId;
+
+    if (!companyId) return;
+
+    try {
+      const { BackupSyncService } = await import("./okf-pipeline/sync-service");
+      const syncService = new BackupSyncService();
+      await (syncService as any).syncTransactionToDrive(companyId, txId, txData);
+    } catch (err: any) {
+      console.error(`Error in onTransactionCreate trigger for ${txId}:`, err);
+    }
+  });
+
+

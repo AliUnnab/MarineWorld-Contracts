@@ -18,6 +18,9 @@ export default function SettingsView({ userId }: SettingsViewProps) {
   const [resetting, setResetting] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
 
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+
   const handleResetWorkspaceData = async () => {
     if (!window.confirm("WARNING: This will permanently delete all your contracts, credit transactions, invoices, support tickets, and workspace teammates (except yourself as Owner). This action cannot be undone. Do you wish to proceed?")) {
       return;
@@ -243,6 +246,34 @@ export default function SettingsView({ userId }: SettingsViewProps) {
       console.log("Google Drive connection revoked.");
     } catch (err) {
       console.error("Failed to disconnect Google Drive:", err);
+    }
+  };
+
+  const handleBackupDrive = async () => {
+    setBackingUp(true);
+    setBackupStatus("Initiating full backup...");
+    try {
+      const response = await fetch("/api/backup/drive", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ companyId: userId }),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        const stats = result.stats || {};
+        setBackupStatus(`Success! Backed up: ${stats.contracts || 0} contracts (PDF), ${stats.invoices || 0} invoices, ${stats.transactions || 0} transactions.`);
+        await logAuditEvent(userId, "Triggered manual Google Drive full backup", "Tenant Configuration Console");
+      } else {
+        setBackupStatus(`Backup failed: ${result.error || "Unknown error"}`);
+      }
+    } catch (err: any) {
+      console.error("Backup trigger failed:", err);
+      setBackupStatus(`Backup failed: ${err.message || "Connection error"}`);
+    } finally {
+      setBackingUp(false);
     }
   };
 
@@ -487,6 +518,17 @@ export default function SettingsView({ userId }: SettingsViewProps) {
                     className="block w-full px-3 py-2 bg-[#171B26] border border-[#2B3347] rounded text-xs text-[#80868B] cursor-not-allowed font-mono"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={handleBackupDrive}
+                  disabled={backingUp}
+                  className="w-full py-2.5 rounded bg-[#00D68F] hover:bg-[#2EE59D] text-[#171B26] text-xs font-bold transition-all uppercase tracking-wider disabled:opacity-50"
+                >
+                  {backingUp ? "Backing up..." : "Backup all data to Google Drive"}
+                </button>
+                {backupStatus && (
+                  <p className="text-[10px] font-mono text-[#BBC0C4] uppercase mt-1 leading-snug">{backupStatus}</p>
+                )}
                 <button
                   type="button"
                   onClick={handleDisconnectDrive}

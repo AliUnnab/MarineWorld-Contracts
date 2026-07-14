@@ -327,7 +327,7 @@ export class DriveService {
   /**
    * Creates a new file in a parent folder, or updates the existing file if it has the same name.
    */
-  public async uploadOrUpdateFile(parentFolderId: string, fileName: string, fileContent: string, mimeType: string): Promise<string> {
+  public async uploadOrUpdateFile(parentFolderId: string, fileName: string, fileContent: string | Buffer, mimeType: string, skipIfExists = false): Promise<string> {
     if (!this.drive) throw new Error("Drive API client not initialized.");
     try {
       // 1. Search for existing file with the same name under the parent folder
@@ -340,12 +340,17 @@ export class DriveService {
 
       const existing = searchRes.data.files;
       
-      const s = new Readable();
-      s.push(fileContent);
-      s.push(null); // sign of end of stream
-
       if (existing && existing.length > 0) {
         const fileId = existing[0].id;
+        if (skipIfExists) {
+          console.log(`ℹ️ File already exists on Drive: ${fileName} (ID: ${fileId}). Skipping upload.`);
+          return fileId;
+        }
+
+        const s = new Readable();
+        s.push(fileContent);
+        s.push(null); // sign of end of stream
+
         console.log(`📝 Updating existing file on Drive: ${fileName} (ID: ${fileId})`);
         
         await this.drive.files.update({
@@ -358,6 +363,10 @@ export class DriveService {
         });
         return fileId;
       }
+
+      const s = new Readable();
+      s.push(fileContent);
+      s.push(null); // sign of end of stream
 
       // 2. If it does not exist, create it
       console.log(`📝 Creating new file on Drive: ${fileName}`);
@@ -380,6 +389,21 @@ export class DriveService {
     } catch (error) {
       console.error(`❌ Error in uploadOrUpdateFile for ${fileName}:`, error);
       throw error;
+    }
+  }
+
+  public async verifyFolderExists(folderId: string): Promise<boolean> {
+    if (!this.drive) return false;
+    try {
+      const res = await this.drive.files.get({
+        fileId: folderId,
+        supportsAllDrives: true,
+        fields: "id, trashed"
+      });
+      return res.data && !res.data.trashed;
+    } catch (err: any) {
+      console.warn(`🔍 Folder ${folderId} verify failed:`, err.message);
+      return false;
     }
   }
 }

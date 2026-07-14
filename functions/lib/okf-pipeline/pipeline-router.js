@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -7,6 +40,7 @@ const express_1 = require("express");
 const firestore_1 = require("firebase-admin/firestore");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
+const os_1 = __importDefault(require("os"));
 const googleapis_1 = require("googleapis");
 // Import local pipeline services
 const drive_service_1 = require("./drive-service");
@@ -30,7 +64,7 @@ const getVectorService = () => _vectorService || (_vectorService = new vector_se
 let _agentService = null;
 const getAgentService = () => _agentService || (_agentService = new agent_service_1.AgentService());
 // Temp directory for file downloads
-const TMP_DIR = path_1.default.resolve(process.cwd(), "tmp");
+const TMP_DIR = path_1.default.resolve(os_1.default.tmpdir(), "marineworld-tmp");
 if (!fs_1.default.existsSync(TMP_DIR)) {
     fs_1.default.mkdirSync(TMP_DIR, { recursive: true });
 }
@@ -42,6 +76,19 @@ const checkOAuthCredentials = () => {
         throw new Error("Google OAuth2 Client Credentials are not configured in environment variables.");
     }
     return { clientId, clientSecret };
+};
+const getRedirectUri = (req) => {
+    if (process.env.DRIVE_REDIRECT_URI) {
+        return process.env.DRIVE_REDIRECT_URI;
+    }
+    const host = req.get("host") || "";
+    const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+    if (!isLocalhost) {
+        // In production, force the exact callback URL configured in Google Cloud Console
+        return "https://marineworld-contracts.web.app/api/auth/google/callback";
+    }
+    const protocol = req.protocol === "https" ? "https" : "http";
+    return `${protocol}://${host}/api/auth/google/callback`;
 };
 /**
  * OAuth2 Step 1: Redirect user to Google Authorization Consent Screen
@@ -55,7 +102,7 @@ router.get("/auth/google", (req, res) => {
     }
     try {
         const { clientId, clientSecret } = checkOAuthCredentials();
-        const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+        const redirectUri = getRedirectUri(req);
         const oauth2Client = new googleapis_1.google.auth.OAuth2(clientId, clientSecret, redirectUri);
         const authUrl = oauth2Client.generateAuthUrl({
             access_type: "offline",
@@ -81,7 +128,7 @@ router.get("/auth/google/callback", async (req, res) => {
     }
     try {
         const { clientId, clientSecret } = checkOAuthCredentials();
-        const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+        const redirectUri = getRedirectUri(req);
         const oauth2Client = new googleapis_1.google.auth.OAuth2(clientId, clientSecret, redirectUri);
         const { tokens } = await oauth2Client.getToken(code);
         const refreshToken = tokens.refresh_token;
@@ -230,6 +277,72 @@ router.post("/drive-webhook", async (req, res) => {
         catch (err) {
             console.error("❌ Webhook async task handler failed:", err.message);
         }
+    }
+});
+/**
+ * Triggers a full backup of all contracts, invoices, and transactions to Google Drive.
+ * POST /api/backup/drive
+ * Body: { companyId: string }
+ */
+router.post("/backup/drive", async (req, res) => {
+    const { companyId } = req.body;
+    if (!companyId) {
+        return res.status(400).json({ error: "Missing companyId in request body." });
+    }
+    try {
+        const { BackupSyncService } = await Promise.resolve().then(() => __importStar(require("./sync-service")));
+        const syncService = new BackupSyncService();
+        const stats = await syncService.runFullBackup(companyId);
+        return res.json({
+            success: true,
+            message: "Backup completed successfully.",
+            stats,
+        });
+    }
+    catch (error) {
+        console.error("❌ Full Drive Backup Error:", error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+/**
+ * Uploads a client-generated PDF file directly to Google Drive.
+ * POST /api/backup/upload-pdf
+ * Body: { companyId: string, fileName: string, fileData: string (base64) }
+ */
+router.post("/backup/upload-pdf", async (req, res) => {
+    const { companyId, fileName, fileData } = req.body;
+    if (!companyId || !fileName || !fileData) {
+        return res.status(400).json({ error: "Missing companyId, fileName, or fileData in request body." });
+    }
+    try {
+        const buffer = Buffer.from(fileData, 'base64');
+        const db = (0, firestore_1.getFirestore)("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51");
+        // Get folderId
+        const companyDoc = await db.collection("companies").doc(companyId).get();
+        if (!companyDoc.exists) {
+            return res.status(404).json({ error: "Company details not found." });
+        }
+        const folderId = companyDoc.data()?.folderId;
+        if (!folderId) {
+            return res.status(400).json({ error: "Google Drive folder not provisioned." });
+        }
+        // Get DriveService
+        const refreshToken = companyDoc.data()?.driveRefreshToken;
+        if (!refreshToken) {
+            return res.status(400).json({ error: "Google Drive not connected." });
+        }
+        const targetDriveService = new drive_service_1.DriveService(refreshToken);
+        // Upload/Update file (overwrite since this is direct user save/sign)
+        const fileId = await targetDriveService.uploadOrUpdateFile(folderId, fileName, buffer, "application/pdf", false);
+        return res.json({
+            success: true,
+            message: "PDF uploaded successfully.",
+            fileId
+        });
+    }
+    catch (error) {
+        console.error("❌ PDF Upload to Drive Error:", error);
+        return res.status(500).json({ error: error.message });
     }
 });
 /**

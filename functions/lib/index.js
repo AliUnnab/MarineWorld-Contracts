@@ -36,8 +36,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.api = exports.stripeWebhook = void 0;
+exports.onTransactionCreate = exports.onInvoiceCreate = exports.onContractWrite = exports.api = exports.stripeWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const auth_1 = require("firebase-admin/auth");
 const firestore_1 = require("firebase-admin/firestore");
@@ -54,10 +55,12 @@ const app = (0, express_1.default)();
 app.use((0, cors_1.default)({ origin: true }));
 // Express JSON body parser (with rawBody support for stripe webhook signature verification)
 app.use(express_1.default.json({
+    limit: '100mb',
     verify: (req, res, buf) => {
         req.rawBody = buf;
     }
 }));
+app.use(express_1.default.urlencoded({ limit: '100mb', extended: true }));
 // Mount OKF pipeline router
 app.use("/api", pipeline_router_1.default);
 // Helper to initialize Stripe from environment secrets
@@ -599,4 +602,67 @@ app.post('/webhook', async (req, res) => {
 // ------------------------------------------
 exports.stripeWebhook = (0, https_1.onRequest)({ maxInstances: 10 }, app);
 exports.api = (0, https_1.onRequest)({ maxInstances: 10 }, app);
+// ------------------------------------------
+// FIRESTORE TRIGGERS FOR BACKUP SYNC (1st Gen)
+// ------------------------------------------
+exports.onContractWrite = functions.firestore
+    .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+    .document("contracts/{contractId}")
+    .onWrite(async (change, context) => {
+    const contractData = change.after.data();
+    const contractId = context.params.contractId;
+    if (!contractData) {
+        console.log(`Document contracts/${contractId} was deleted. Skipping sync.`);
+        return;
+    }
+    const companyId = contractData.userId;
+    if (!companyId) {
+        console.warn(`Document contracts/${contractId} has no userId. Skipping sync.`);
+        return;
+    }
+    try {
+        const { BackupSyncService } = await Promise.resolve().then(() => __importStar(require("./okf-pipeline/sync-service")));
+        const syncService = new BackupSyncService();
+        await syncService.syncContractToDrive(companyId, contractId, contractData);
+    }
+    catch (err) {
+        console.error(`Error in onContractWrite trigger for ${contractId}:`, err);
+    }
+});
+exports.onInvoiceCreate = functions.firestore
+    .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+    .document("invoices/{invoiceId}")
+    .onCreate(async (snapshot, context) => {
+    const invoiceData = snapshot.data();
+    const invoiceId = context.params.invoiceId;
+    const companyId = invoiceData?.userId;
+    if (!companyId)
+        return;
+    try {
+        const { BackupSyncService } = await Promise.resolve().then(() => __importStar(require("./okf-pipeline/sync-service")));
+        const syncService = new BackupSyncService();
+        await syncService.syncInvoiceToDrive(companyId, invoiceId, invoiceData);
+    }
+    catch (err) {
+        console.error(`Error in onInvoiceCreate trigger for ${invoiceId}:`, err);
+    }
+});
+exports.onTransactionCreate = functions.firestore
+    .database("ai-studio-6dbfd403-b57c-4e02-8999-633ee65aff51")
+    .document("credit_transactions/{txId}")
+    .onCreate(async (snapshot, context) => {
+    const txData = snapshot.data();
+    const txId = context.params.txId;
+    const companyId = txData?.userId;
+    if (!companyId)
+        return;
+    try {
+        const { BackupSyncService } = await Promise.resolve().then(() => __importStar(require("./okf-pipeline/sync-service")));
+        const syncService = new BackupSyncService();
+        await syncService.syncTransactionToDrive(companyId, txId, txData);
+    }
+    catch (err) {
+        console.error(`Error in onTransactionCreate trigger for ${txId}:`, err);
+    }
+});
 //# sourceMappingURL=index.js.map

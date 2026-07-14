@@ -2107,6 +2107,9 @@ export default function ContractStudio({ template, company, userType, onBack }: 
   const [individualAiInstruction, setIndividualAiInstruction] = useState("");
   const [showAlternativeDropdownId, setShowAlternativeDropdownId] = useState<string | null>(null);
 
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+
   // Pre-configured replacement pools for quick 'Replace' feature
   const clauseAlternatives: { [key: string]: string[] } = {
     clause_parties: [
@@ -3143,6 +3146,7 @@ These confirmed parameters define the fundamental commercial basis of this bindi
         if (compSnap.exists()) {
           const data = compSnap.data();
           setIsPaymentMethodValid(data.isPaymentMethodValid !== false);
+          setIsDriveConnected(!!data.driveRefreshToken);
         } else {
           // If company doc doesn't exist, create it with default starter values
           await setDoc(compRef, {
@@ -3175,6 +3179,103 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
     loadCreditsAndHistory();
   }, [company?.id]);
+
+  const savePdfToFirestoreCache = async (contractId: string, base64data: string) => {
+    try {
+      const pdfCacheRef = doc(db, "contract_pdfs", contractId);
+      const totalSize = base64data.length;
+      const chunkSize = 800 * 1024; // 800 KB chunks (safe below 1MB document limit)
+      
+      if (totalSize < 1000000) {
+        await setDoc(pdfCacheRef, {
+          pdfData: base64data,
+          isChunked: false,
+          updatedAt: serverTimestamp()
+        });
+        console.log(`✅ Cached PDF directly in Firestore for contract: ${contractId}`);
+      } else {
+        const totalChunks = Math.ceil(totalSize / chunkSize);
+        
+        await setDoc(pdfCacheRef, {
+          isChunked: true,
+          totalChunks: totalChunks,
+          updatedAt: serverTimestamp()
+        });
+        
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * chunkSize;
+          const end = Math.min(start + chunkSize, totalSize);
+          const chunkStr = base64data.substring(start, end);
+          
+          const chunkRef = doc(db, `contract_pdfs/${contractId}/chunks`, `chunk_${i}`);
+          await setDoc(chunkRef, {
+            index: i,
+            chunkData: chunkStr,
+            updatedAt: serverTimestamp()
+          });
+        }
+        console.log(`✅ Cached chunked PDF (${totalChunks} chunks) in Firestore for contract: ${contractId}`);
+      }
+    } catch (err) {
+      console.warn("Failed to cache PDF in Firestore:", err);
+    }
+  };
+
+  // Debounced silent background PDF caching to Firestore
+  useEffect(() => {
+    if (!activeContractId || workflowStep !== 'editor') return;
+
+    const timer = setTimeout(() => {
+      console.log("Idle detected. Generating silent contract PDF cache...");
+      const element = document.getElementById('contract-pages-container');
+      if (!element) return;
+      
+      // Apply print styling to the actual element directly
+      element.classList.add('pdf-generating');
+
+      const title = foundation.title || "Untitled Agreement";
+      const fileName = `${title.replace(/[/\\?%*:|"<>]/g, "-")}_${activeContractId}.pdf`;
+      const opt = {
+        margin:       0,
+        filename:     fileName,
+        image:        { type: 'jpeg', quality: 0.75 },
+        html2canvas:  { scale: 1.2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
+      };
+
+      html2pdf().from(element).set(opt).outputPdf('blob').then((blob: Blob) => {
+        // Clean up print styling
+        element.classList.remove('pdf-generating');
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64data = (reader.result as string).split(',')[1];
+          await savePdfToFirestoreCache(activeContractId, base64data);
+        };
+      }).catch((err: any) => {
+        console.warn("Silent PDF generation failed:", err);
+        element.classList.remove('pdf-generating');
+      });
+    }, 3000); // 3 seconds debounce
+
+    return () => clearTimeout(timer);
+  }, [
+    activeContractId,
+    workflowStep,
+    foundation,
+    jurisdiction,
+    partyA,
+    partyB,
+    contractFields,
+    clauses,
+    revisions,
+    additionalParties,
+    partyASigned,
+    partyBSigned,
+    additionalSigned
+  ]);
 
   // Fetch contracts list from Firestore in real-time
   useEffect(() => {
@@ -3998,12 +4099,90 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
   
   
+  const syncContractPdfToDrive = async (showSuccessAlert = true) => {
+    const element = document.getElementById('contract-pages-container');
+    if (!element) return;
+
+    setIsSyncingDrive(true);
+    element.classList.add('pdf-generating');
+    
+    const title = foundation.title || "Untitled Agreement";
+    const fileName = `${title.replace(/[/\\?%*:|"<>]/g, "-")}_${activeContractId}.pdf`;
+
+    const opt = {
+      margin:       0,
+      filename:     fileName,
+      image:        { type: 'jpeg', quality: 0.75 },
+      html2canvas:  { scale: 1.2, useCORS: true, logging: false },
+      jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
+      pagebreak:    { mode: ['css', 'legacy'] }
+    };
+
+    try {
+      const blob = await html2pdf().from(element).set(opt).outputPdf('blob');
+
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      await new Promise<void>((resolve, reject) => {
+        reader.onloadend = async () => {
+          try {
+            const base64data = (reader.result as string).split(',')[1];
+            
+            // Save cache to Firestore
+            if (activeContractId) {
+              await savePdfToFirestoreCache(activeContractId, base64data);
+            }
+
+            const targetCompanyId = company?.id || auth.currentUser?.uid;
+            if (!targetCompanyId) {
+              throw new Error("Missing companyId/userId context.");
+            }
+
+            // Call backend upload endpoint
+            const response = await fetch("/api/backup/upload-pdf", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                companyId: targetCompanyId,
+                fileName: fileName,
+                fileData: base64data
+              })
+            });
+
+            if (response.ok) {
+              console.log(`✅ Pixel-perfect contract PDF successfully synced to Google Drive: ${fileName}`);
+              if (showSuccessAlert) {
+                alert(`Pixel-perfect contract PDF successfully synced to Google Drive: ${fileName}`);
+              }
+              resolve();
+            } else {
+              const errData = await response.json();
+              throw new Error(errData.error || "Upload failed");
+            }
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.onerror = reject;
+      });
+    } catch (err: any) {
+      console.error("Failed to generate and sync PDF to Google Drive:", err);
+      alert("Failed to sync PDF to Google Drive: " + err.message);
+    } finally {
+      element.classList.remove('pdf-generating');
+      setIsSyncingDrive(false);
+    }
+  };
+
   const handleDownload = async () => {
     const element = document.getElementById('contract-pages-container');
     if (!element) return;
 
     // To ensure high quality, we clone the node or temporarily remove the scale transform
-    // Actually html2pdf handles it if we pass the right options
+    // html2pdf handles it if we pass the right options
     
     // We only want to capture the actual pages, let's wrap them in a container if needed,
     // but the container itself is fine.
@@ -4011,17 +4190,27 @@ These confirmed parameters define the fundamental commercial basis of this bindi
     // Set a class to indicate printing mode for any CSS tweaks
     element.classList.add('pdf-generating');
     
+    const title = foundation.title || "Untitled Agreement";
+    const fileName = `${title.replace(/[/\\?%*:|"<>]/g, "-")}_${activeContractId || 'Draft'}.pdf`;
+
     const opt = {
       margin:       0,
-      filename:     `Contract_${activeContractId || 'Draft'}.pdf`,
-      image:        { type: 'jpeg' as 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
+      filename:     fileName,
+      image:        { type: 'jpeg' as 'jpeg', quality: 0.75 },
+      html2canvas:  { scale: 1.2, useCORS: true, logging: false },
       jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
 
     try {
       await html2pdf().from(element).set(opt).save();
+
+      // Auto background sync to Google Drive on download
+      if (isDriveConnected) {
+        setTimeout(() => {
+          syncContractPdfToDrive(false).catch(err => console.warn("Background Drive sync failed:", err));
+        }, 1000);
+      }
     } catch (err) {
       console.error("PDF generation failed", err);
     } finally {
