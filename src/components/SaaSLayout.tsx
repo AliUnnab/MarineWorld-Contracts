@@ -347,8 +347,8 @@ export default function SaaSLayout({ user, onLogout, onNavigate, initialTab = 'D
     <div className="min-h-screen bg-[#171B26] text-[#E8EAED] flex font-manrope overflow-hidden relative">
       {showComplianceModal && (
         <ComplianceModal
-          userId={activeWorkspaceId}
-          userEmail={user.email || ''}
+          userId={user?.uid || ''}
+          userEmail={user?.email || ''}
           onAccepted={() => setShowComplianceModal(false)}
         />
       )}

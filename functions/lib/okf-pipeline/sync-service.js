@@ -219,6 +219,10 @@ class BackupSyncService {
             console.log(`📁 Backing up contract "${title}" (${statusLabel}) to Google Drive as PDF...`);
             await targetDriveService.uploadOrUpdateFile(folderId, fileName, pdfBuffer, "application/pdf", false);
             console.log(`✅ Backup successfully uploaded to Drive for contract: ${fileName}`);
+            // Sync attachments automatically as well
+            if (contractData.identityDocs && contractData.identityDocs.length > 0) {
+                await this.syncContractAttachments(targetDriveService, folderId, title, contractId, contractData.identityDocs);
+            }
         }
         catch (err) {
             console.error(`❌ Contract Drive sync failed for contract ${contractId}:`, err.message);
@@ -752,6 +756,58 @@ class BackupSyncService {
         return Buffer.from(arrayBuffer);
     }
     /**
+     * Converts a base64 image data URL into a PDF buffer.
+     */
+    convertImageToPdf(base64DataUrl, title) {
+        const doc = new jspdf_1.jsPDF({ format: 'a4', orientation: 'portrait' });
+        const matches = base64DataUrl.match(/^data:(image\/[a-zA-Z+-]+);base64,(.+)$/);
+        if (!matches || matches.length < 3) {
+            throw new Error("Invalid base64 image format");
+        }
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        let format = 'JPEG';
+        if (mimeType.includes('png'))
+            format = 'PNG';
+        const margin = 10;
+        const width = 210 - (margin * 2);
+        const height = 297 - (margin * 2);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text(title, margin, margin + 5);
+        doc.addImage(base64Data, format, margin, margin + 15, width, height - 20);
+        return Buffer.from(doc.output('arraybuffer'));
+    }
+    /**
+     * Helper to sync contract attachments (identityDocs) to Google Drive in the /attachments subfolder.
+     */
+    async syncContractAttachments(targetDriveService, parentFolderId, contractTitle, contractId, identityDocs) {
+        if (!identityDocs || identityDocs.length === 0)
+            return;
+        try {
+            const attachmentsSubfolderId = await targetDriveService.getOrCreateSubfolder(parentFolderId, "attachments");
+            console.log(`📁 Syncing ${identityDocs.length} attachments for contract "${contractTitle}" to Drive...`);
+            for (const doc of identityDocs) {
+                if (!doc.previewUrl)
+                    continue;
+                const docName = doc.name || `Attachment_${doc.type || doc.id}`;
+                const cleanName = docName.replace(/[/\\?%*:|"<>]/g, "-");
+                const pdfFileName = `${contractTitle.replace(/[/\\?%*:|"<>]/g, "-")}_Attachment_${cleanName.replace(/\.[^/.]+$/, "")}.pdf`;
+                try {
+                    const pdfBuffer = this.convertImageToPdf(doc.previewUrl, docName);
+                    await targetDriveService.uploadOrUpdateFile(attachmentsSubfolderId, pdfFileName, pdfBuffer, "application/pdf", true);
+                    console.log(`✅ Synced attachment PDF to Drive: ${pdfFileName}`);
+                }
+                catch (err) {
+                    console.error(`❌ Failed to sync attachment ${doc.id} (${docName}):`, err.message);
+                }
+            }
+        }
+        catch (err) {
+            console.error(`❌ Error in syncContractAttachments for contract ${contractId}:`, err.message);
+        }
+    }
+    /**
      * Run a full backup of all contracts (as PDF), invoices (as JSON), and transactions (as JSON) for a user/company.
      * If a file already exists in Drive, it skips it to prevent duplicates/overwriting.
      */
@@ -797,6 +853,10 @@ class BackupSyncService {
                     // We use false for skipIfExists so that updates are successfully pushed to Drive in-place
                     await targetDriveService.uploadOrUpdateFile(folderId, fileName, finalBuffer, "application/pdf", skip);
                     stats.contracts++;
+                    // Backup any attachments associated with this contract
+                    if (contractData.identityDocs && contractData.identityDocs.length > 0) {
+                        await this.syncContractAttachments(targetDriveService, folderId, title, contractId, contractData.identityDocs);
+                    }
                 }
                 catch (err) {
                     console.error(`❌ Failed to backup contract ${contractId}:`, err.message);

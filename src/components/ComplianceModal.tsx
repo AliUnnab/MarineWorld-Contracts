@@ -3,7 +3,7 @@ import {
   ShieldCheck, Scale, CheckCircle2, Sparkles, AlertTriangle, ArrowRight, Lock, Calendar, FileText
 } from 'lucide-react';
 import { db, logAuditEvent } from '../../services/firebase-service';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface ComplianceModalProps {
   userId: string;
@@ -32,10 +32,10 @@ export default function ComplianceModal({ userId, userEmail, onAccepted }: Compl
 
       try {
         // 2. Attempt to update User Record in Firebase
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
           acceptableUsePolicyAccepted: true,
           aupAcceptedAt: timestamp
-        });
+        }, { merge: true });
 
         // 3. Attempt to log Audit Trail
         await logAuditEvent(
