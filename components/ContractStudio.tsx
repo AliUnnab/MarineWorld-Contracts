@@ -1552,7 +1552,21 @@ const DigitalSignatureBlock = ({ approvalData, partyA, partyB, additionalParties
   );
 };
 
-export default function ContractStudio({ template, company, userType, onBack }: { template?: string, company?: any, userType?: string, onBack?: () => void }) {
+export default function ContractStudio({ 
+  template, 
+  company, 
+  userType, 
+  onBack,
+  silentBackupContractId = null,
+  onSilentBackupComplete
+}: { 
+  template?: string, 
+  company?: any, 
+  userType?: string, 
+  onBack?: () => void,
+  silentBackupContractId?: string | null,
+  onSilentBackupComplete?: (success: boolean) => void
+}) {
   const isTR = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('tr');
   const t = (en: string, tr: string) => (isTR ? tr : en);
 
@@ -3223,7 +3237,7 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
   // Debounced silent background PDF caching to Firestore
   useEffect(() => {
-    if (!activeContractId || workflowStep !== 'editor') return;
+    if (!activeContractId || workflowStep !== 'editor' || silentBackupContractId) return;
 
     const timer = setTimeout(() => {
       console.log("Idle detected. Generating silent contract PDF cache...");
@@ -3238,9 +3252,9 @@ These confirmed parameters define the fundamental commercial basis of this bindi
       const opt = {
         margin:       0,
         filename:     fileName,
-        image:        { type: 'jpeg', quality: 0.75 },
-        html2canvas:  { scale: 1.2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
         pagebreak:    { mode: ['css', 'legacy'] }
       };
 
@@ -3405,7 +3419,7 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
   // Heartbeat & Idle Timeout Mechanism
   useEffect(() => {
-    if (workflowStep !== 'editor' || !activeContractId || !company?.id) return;
+    if (workflowStep !== 'editor' || !activeContractId || !company?.id || silentBackupContractId) return;
 
     let idleTimer: NodeJS.Timeout;
     const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -3559,7 +3573,7 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
   // Standard Auto-save contract draft back to contracts collection (1.5s debounce)
   useEffect(() => {
-    if (!activeContractId || !company?.id || workflowStep !== 'editor') return;
+    if (!activeContractId || !company?.id || workflowStep !== 'editor' || silentBackupContractId) return;
 
     setSaveStatus('saving');
 
@@ -4112,8 +4126,8 @@ These confirmed parameters define the fundamental commercial basis of this bindi
     const opt = {
       margin:       0,
       filename:     fileName,
-      image:        { type: 'jpeg', quality: 0.75 },
-      html2canvas:  { scale: 1.2, useCORS: true, logging: false },
+      image:        { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false },
       jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
@@ -4196,8 +4210,8 @@ These confirmed parameters define the fundamental commercial basis of this bindi
     const opt = {
       margin:       0,
       filename:     fileName,
-      image:        { type: 'jpeg' as 'jpeg', quality: 0.75 },
-      html2canvas:  { scale: 1.2, useCORS: true, logging: false },
+      image:        { type: 'jpeg' as 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false },
       jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
       pagebreak:    { mode: ['css', 'legacy'] }
     };
@@ -4987,6 +5001,7 @@ These confirmed parameters define the fundamental commercial basis of this bindi
 
   // Load contract from URL query parameters (?id=...) if present
   useEffect(() => {
+    if (silentBackupContractId) return;
     const urlParams = new URLSearchParams(window.location.search);
     const contractIdFromUrl = urlParams.get('id');
 
@@ -5016,8 +5031,121 @@ These confirmed parameters define the fundamental commercial basis of this bindi
     }
   }, [activeContractId, company?.id]);
 
+  const loadingBackupContractIdRef = useRef<string | null>(null);
+
+  // Load contract for silent backup in background if requested
+  useEffect(() => {
+    if (silentBackupContractId && silentBackupContractId !== activeContractId && company?.id) {
+      if (loadingBackupContractIdRef.current === silentBackupContractId) return;
+      loadingBackupContractIdRef.current = silentBackupContractId;
+
+      const loadFromDb = async () => {
+        try {
+          const docRef = doc(db, 'contracts', silentBackupContractId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            loadContractIntoEditor({ id: docSnap.id, ...data });
+            setWorkflowStep('editor');
+            setShowPdfPreviewOverlay(true);
+            setPreviewShowCropMarks(true);
+            setPreviewIncludeSeal(true);
+            setPreviewPrintMode(false);
+          } else {
+            console.error("Contract draft not found for silent backup in Firestore registry.");
+            onSilentBackupComplete?.(false);
+          }
+        } catch (err) {
+          console.error("Failed to load silent backup contract:", err);
+          onSilentBackupComplete?.(false);
+        } finally {
+          loadingBackupContractIdRef.current = null;
+        }
+      };
+      loadFromDb();
+    }
+  }, [silentBackupContractId, activeContractId, company?.id]);
+
+  // Generate and cache/upload PDF silently in background for silent backup mode
+  useEffect(() => {
+    if (!silentBackupContractId || !activeContractId || silentBackupContractId !== activeContractId) return;
+    if (workflowStep !== 'editor') return;
+
+    const timer = setTimeout(async () => {
+      console.log(`[Silent Backup] Compiling PDF for contract: ${activeContractId}`);
+      const element = document.getElementById('contract-pages-container');
+      if (!element) {
+        console.error("Pages container not found for silent backup.");
+        onSilentBackupComplete?.(false);
+        return;
+      }
+
+      element.classList.add('pdf-generating');
+
+      const title = foundation.title || "Untitled Agreement";
+      const fileName = `${title.replace(/[/\\?%*:|"<>]/g, "-")}_${activeContractId}.pdf`;
+      const opt = {
+        margin:       0,
+        filename:     fileName,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'px', format: [794, 1123] as [number, number], orientation: 'portrait' as 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
+      };
+
+      try {
+        const blob = await html2pdf().from(element).set(opt).outputPdf('blob');
+        element.classList.remove('pdf-generating');
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          try {
+            const base64data = (reader.result as string).split(',')[1];
+            await savePdfToFirestoreCache(activeContractId, base64data);
+
+            const targetCompanyId = company?.id || auth.currentUser?.uid;
+            if (targetCompanyId) {
+              const response = await fetch("/api/backup/upload-pdf", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  companyId: targetCompanyId,
+                  fileName: fileName,
+                  fileData: base64data
+                })
+              });
+              if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || "Upload failed");
+              }
+            }
+
+            console.log(`[Silent Backup] PDF cached and uploaded for: ${activeContractId}`);
+            onSilentBackupComplete?.(true);
+          } catch (uploadErr: any) {
+            console.error("Failed to upload/cache silent backup PDF:", uploadErr);
+            onSilentBackupComplete?.(false);
+          }
+        };
+        reader.onerror = () => {
+          onSilentBackupComplete?.(false);
+        };
+      } catch (err) {
+        console.error("Silent PDF generation failed:", err);
+        element.classList.remove('pdf-generating');
+        onSilentBackupComplete?.(false);
+      }
+    }, 2000); // 2 seconds delay to allow full rendering
+
+    return () => clearTimeout(timer);
+  }, [activeContractId, silentBackupContractId, workflowStep, foundation, clauses, additionalParties, partyASigned, partyBSigned, additionalSigned]);
+
   // Synchronize browser URL query parameters with active editor state
   useEffect(() => {
+    if (silentBackupContractId) return;
     if (workflowStep === 'hub') {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.has('id')) {

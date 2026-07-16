@@ -6,6 +6,7 @@ import {
   Save, Loader2, Bell, ShieldOff, ToggleLeft, ToggleRight 
 } from 'lucide-react';
 import { UserProfile } from '../types/saas';
+import ContractStudio from '../../components/ContractStudio';
 
 interface SettingsViewProps {
   userId: string;
@@ -20,6 +21,8 @@ export default function SettingsView({ userId }: SettingsViewProps) {
 
   const [backingUp, setBackingUp] = useState(false);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [backupContractIds, setBackupContractIds] = useState<string[]>([]);
+  const [currentBackupIndex, setCurrentBackupIndex] = useState<number>(-1);
 
   const handleResetWorkspaceData = async () => {
     if (!window.confirm("WARNING: This will permanently delete all your contracts, credit transactions, invoices, support tickets, and workspace teammates (except yourself as Owner). This action cannot be undone. Do you wish to proceed?")) {
@@ -249,9 +252,33 @@ export default function SettingsView({ userId }: SettingsViewProps) {
     }
   };
 
+  // Start the background backup process by compiling contract PDFs in client side first
   const handleBackupDrive = async () => {
     setBackingUp(true);
-    setBackupStatus("Initiating full backup...");
+    setBackupStatus("Fetching contract registry list...");
+    try {
+      const contractsQuery = query(collection(db, 'contracts'), where('userId', '==', userId));
+      const contractsSnap = await getDocs(contractsQuery);
+      const ids = contractsSnap.docs.map(doc => doc.id);
+      
+      if (ids.length > 0) {
+        setBackupContractIds(ids);
+        setBackupStatus(`Preparing to compile ${ids.length} contract PDFs...`);
+        setCurrentBackupIndex(0);
+      } else {
+        // No contracts, trigger backend backup directly for invoices & transactions
+        await runBackendBackup();
+      }
+    } catch (err: any) {
+      console.error("Backup initialization failed:", err);
+      setBackupStatus(`Backup failed: ${err.message || "Connection error"}`);
+      setBackingUp(false);
+    }
+  };
+
+  // Run backend backup sync endpoint
+  const runBackendBackup = async () => {
+    setBackupStatus("Syncing workspace items to Google Drive...");
     try {
       const response = await fetch("/api/backup/drive", {
         method: "POST",
@@ -270,10 +297,28 @@ export default function SettingsView({ userId }: SettingsViewProps) {
         setBackupStatus(`Backup failed: ${result.error || "Unknown error"}`);
       }
     } catch (err: any) {
-      console.error("Backup trigger failed:", err);
+      console.error("Backend backup failed:", err);
       setBackupStatus(`Backup failed: ${err.message || "Connection error"}`);
     } finally {
       setBackingUp(false);
+      setCurrentBackupIndex(-1);
+      setBackupContractIds([]);
+    }
+  };
+
+  // Hook to handle transition between silent PDF generations
+  const handleSilentBackupComplete = async (success: boolean) => {
+    if (currentBackupIndex < 0 || currentBackupIndex >= backupContractIds.length) return;
+    
+    console.log(`[Silent Backup] Contract ${currentBackupIndex + 1}/${backupContractIds.length} complete. Success: ${success}`);
+    
+    const nextIndex = currentBackupIndex + 1;
+    if (nextIndex < backupContractIds.length) {
+      setBackupStatus(`Compiling pixel-perfect PDF for contract ${nextIndex + 1} of ${backupContractIds.length}...`);
+      setCurrentBackupIndex(nextIndex);
+    } else {
+      // Finished all client-side PDF compiles, trigger backend sync
+      await runBackendBackup();
     }
   };
 
@@ -584,6 +629,17 @@ export default function SettingsView({ userId }: SettingsViewProps) {
           </button>
         </div>
       </div>
+
+      {currentBackupIndex >= 0 && currentBackupIndex < backupContractIds.length && (
+        <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, pointerEvents: 'none', zIndex: -1000 }}>
+          <ContractStudio
+            key={backupContractIds[currentBackupIndex]}
+            company={{ id: userId, name: company || profile?.companyName || profile?.displayName || (profile?.email ? `${profile.email.split('@')[0]}'s Workspace` : "Global Trade & Maritime Operations Ltd") }}
+            silentBackupContractId={backupContractIds[currentBackupIndex]}
+            onSilentBackupComplete={handleSilentBackupComplete}
+          />
+        </div>
+      )}
     </div>
   );
 }
